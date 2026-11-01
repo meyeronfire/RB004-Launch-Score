@@ -1,0 +1,295 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-01T06:36:59.600362+00:00",
+  "title": "Design System: RB004 Launch Score",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Black",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Near Black",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "White",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Soft White",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "ink-faint": {
+        "role": "neutral",
+        "displayName": "Faint White",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Hot Pink",
+        "tonalRamp": [
+          "oklch(15% 0.24185 4.997)",
+          "oklch(27% 0.24185 4.997)",
+          "oklch(38% 0.24185 4.997)",
+          "oklch(49% 0.24185 4.997)",
+          "oklch(61% 0.24185 4.997)",
+          "oklch(72% 0.24185 4.997)",
+          "oklch(84% 0.24185 4.997)",
+          "oklch(95% 0.24185 4.997)"
+        ]
+      },
+      "accent-strong": {
+        "role": "primary",
+        "displayName": "Deep Hot Pink",
+        "tonalRamp": [
+          "oklch(15% 0.22719 5.333)",
+          "oklch(27% 0.22719 5.333)",
+          "oklch(38% 0.22719 5.333)",
+          "oklch(49% 0.22719 5.333)",
+          "oklch(61% 0.22719 5.333)",
+          "oklch(72% 0.22719 5.333)",
+          "oklch(84% 0.22719 5.333)",
+          "oklch(95% 0.22719 5.333)"
+        ]
+      },
+      "separator": {
+        "role": "neutral",
+        "displayName": "Hairline White",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(27% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Landing question."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Report section headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Finding titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Global explanatory prose."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Release and measurement metadata."
+      },
+      "score": {
+        "displayName": "Score",
+        "purpose": "Monumental report numeral."
+      },
+      "prompt": {
+        "displayName": "Prompt",
+        "purpose": "Tool-specific fix output."
+      }
+    },
+    "shadows": [
+      {
+        "name": "live-status",
+        "value": "0 0 12px rgba(255,46,126,.45)",
+        "purpose": "Active scanning dot only."
+      },
+      {
+        "name": "score-marker",
+        "value": "0 0 18px rgba(255,46,126,.35)",
+        "purpose": "Pink rule beneath the score."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-transition",
+        "value": ".2s ease",
+        "purpose": "Primary hover and URL underline state changes."
+      },
+      {
+        "name": "scan-pulse",
+        "value": "pulse 1.5s ease-in-out infinite",
+        "purpose": "Active status dot; opacity reaches .3 at halfway; disabled for reduced motion."
+      },
+      {
+        "name": "score-count",
+        "value": "650ms; 1 - (1 - progress)^4",
+        "purpose": "Client count-in; skipped when reduced motion is requested."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "report-stack",
+        "value": "760px"
+      },
+      {
+        "name": "landing-stack",
+        "value": "720px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Scan Action",
+      "kind": "button",
+      "refersTo": "button-scan",
+      "description": "Primary URL submission, with its specific hover lift.",
+      "html": "<button class=\"ds-scan-action\">Get my score</button>",
+      "css": ".ds-scan-action { min-height:48px; padding:0 20px; border:0; border-radius:0; color:var(--bg, #000); background:var(--accent, #ff2e7e); font:650 14px var(--display, sans-serif); cursor:pointer; transition:background .2s ease, transform .2s ease; } .ds-scan-action:hover { background:var(--accent-strong, #e0186a); transform:translateY(-1px); } .ds-scan-action:focus-visible { outline: 2px solid var(--accent, #ff2e7e); outline-offset: 5px; }"
+    },
+    {
+      "name": "Report Primary Action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Unlock or copy action in the report.",
+      "html": "<button class=\"ds-primary-action\">Copy Cursor prompt</button>",
+      "css": ".ds-primary-action { display:block; min-height:50px; padding:0 20px; color:var(--bg, #000); background:var(--accent, #ff2e7e); border:0; border-radius:0; font:650 14px var(--display, sans-serif); cursor:pointer; transition:background .2s ease; } .ds-primary-action:hover { background:var(--accent-strong, #e0186a); } .ds-primary-action:disabled { opacity:.6; cursor:wait; } .ds-primary-action:focus-visible { outline: 2px solid var(--accent, #ff2e7e); outline-offset: 5px; }"
+    },
+    {
+      "name": "Underline URL Field",
+      "kind": "input",
+      "refersTo": "scan-field",
+      "description": "Open URL entry with a shared bottom rule that becomes pink on focus.",
+      "html": "<div class=\"ds-scan-field\"><input aria-label=\"Page URL\" type=\"url\" placeholder=\"Paste your page URL\"></div>",
+      "css": ".ds-scan-field { border-bottom:1px solid var(--ink-soft, rgba(255,255,255,.78)); transition:border-color .2s ease; } .ds-scan-field:focus-within { border-color:var(--accent, #ff2e7e); } .ds-scan-field input { width:100%; height:64px; border:0; border-radius:0; background:transparent; outline:0; color:var(--ink, #fff); font-family:var(--display, sans-serif); font-size:clamp(18px, 2vw, 24px); letter-spacing:-.02em; } .ds-scan-field input::placeholder { color:var(--ink-faint, rgba(255,255,255,.56)); opacity:1; } @media(max-width:720px) { .ds-scan-field input { height:58px; font-size:17px; } }"
+    },
+    {
+      "name": "Footer Navigation",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Faint mono text links with generous interaction targets.",
+      "html": "<nav class=\"ds-footer-nav\" aria-label=\"Legal pages\"><a href=\"/terms\">Terms</a><a href=\"/privacy\">Privacy</a><a href=\"/refund\">Refunds</a></nav>",
+      "css": ".ds-footer-nav { display:flex; flex-wrap:wrap; gap:22px; color:var(--ink-faint, rgba(255,255,255,.56)); font:11px var(--mono, monospace); } .ds-footer-nav a { min-width:44px; min-height:44px; display:inline-flex; justify-content:center; align-items:center; text-decoration:none; color:inherit; } .ds-footer-nav a:hover { color:var(--ink, #fff); } .ds-footer-nav a:focus-visible { outline: 2px solid var(--accent, #ff2e7e); outline-offset: 5px; }"
+    },
+    {
+      "name": "Chrome Score",
+      "kind": "custom",
+      "refersTo": "score-display",
+      "description": "The signature metallic reading with denominator and restrained pink marker.",
+      "html": "<div class=\"ds-score\" role=\"img\" aria-label=\"88 out of 100\"><span class=\"ds-score-number\" aria-hidden=\"true\">88</span><span class=\"ds-score-denom\" aria-hidden=\"true\">/100</span><span class=\"ds-score-tick\" aria-hidden=\"true\"></span></div>",
+      "css": ".ds-score { display:flex; align-items:flex-start; position:relative; margin-bottom:32px; } .ds-score-number { font-family:var(--display, sans-serif); font-size:clamp(160px, 24vw, 292px); line-height:.73; font-weight:560; letter-spacing:-.04em; background:var(--chrome, linear-gradient(174deg, #fff 0%, #d4d4d4 20%, #fff 31%, #acacac 45%, #888 48%, #fff 50%, #f5f5f5 54%, #919191 57%, #c4c4c4 76%, #fff 94%)); -webkit-background-clip:text; background-clip:text; color:transparent; font-variant-numeric:tabular-nums; } .ds-score-denom { color:var(--ink-faint, rgba(255,255,255,.56)); font:16px var(--mono, monospace); margin:9px 0 0 12px; } .ds-score-tick { position:absolute; width:68px; height:4px; background:var(--accent, #ff2e7e); bottom:-22px; left:4px; box-shadow:0 0 18px rgba(255,46,126,.35); } @media(max-width:760px) { .ds-score-number { font-size:clamp(150px, 50vw, 220px); } }"
+    },
+    {
+      "name": "Category Reading",
+      "kind": "custom",
+      "refersTo": "category-reading",
+      "description": "Thin data bar, semantic label, and tabular reading.",
+      "html": "<div class=\"ds-category\"><span>Clarity</span><div class=\"ds-category-track\" aria-hidden=\"true\"><i></i></div><span class=\"ds-category-score\">80</span></div>",
+      "css": ".ds-category { display:grid; grid-template-columns:120px 1fr 42px; gap:15px; min-height:44px; align-items:center; color:var(--ink, #fff); font:14px var(--display, sans-serif); } .ds-category-track { height:2px; background:#272327; overflow:hidden; } .ds-category-track i { display:block; width:80%; height:100%; background:var(--accent, #ff2e7e); } .ds-category-score { text-align:right; font:12px var(--mono, monospace); font-variant-numeric:tabular-nums; } @media(max-width:760px) { .ds-category { grid-template-columns:86px 1fr 36px; gap:10px; font-size:13px; } }"
+    },
+    {
+      "name": "Selected Tool Tab",
+      "kind": "button",
+      "refersTo": "tool-tabs",
+      "description": "A plain-text selected tool; selection is pink and underlined.",
+      "html": "<div class=\"ds-tool-tabs\" role=\"tablist\" aria-label=\"Fix prompt by tool\"><button role=\"tab\" aria-selected=\"true\" class=\"ds-tab ds-active\">Cursor</button><button role=\"tab\" aria-selected=\"false\" tabindex=\"-1\" class=\"ds-tab\">Codex</button></div>",
+      "css": ".ds-tool-tabs { display:flex; gap:5px; flex-wrap:wrap; } .ds-tab { min-height:44px; padding:0 14px; color:var(--ink-soft, rgba(255,255,255,.78)); background:transparent; border:0; border-radius:0; cursor:pointer; font:17px/1.55 var(--display, sans-serif); } .ds-tab.ds-active { color:var(--accent, #ff2e7e); text-decoration:underline; text-underline-offset:8px; } .ds-tab:focus-visible { outline: 2px solid var(--accent, #ff2e7e); outline-offset: 5px; }"
+    },
+    {
+      "name": "Prompt Output",
+      "kind": "custom",
+      "refersTo": "prompt-output",
+      "description": "Scrollable mono output on a flat near-black surface.",
+      "html": "<pre class=\"ds-prompt-output\" tabindex=\"0\">Preserve the page’s brand.\nUse the measured findings to prioritize changes.</pre>",
+      "css": ".ds-prompt-output { max-height:520px; overflow:auto; white-space:pre-wrap; word-break:break-word; background:var(--surface, #0a0a0a); padding:clamp(20px, 4vw, 40px); color:var(--ink-soft, rgba(255,255,255,.78)); font:13px/1.65 var(--mono, monospace); } .ds-prompt-output:focus-visible { outline: 2px solid var(--accent, #ff2e7e); outline-offset: 5px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Pinned Regular Basis Editorial World",
+    "overview": "A black editorial canvas gives the page its structure through scale, whitespace, and fine horizontal rules. Inter Display carries both headlines and prose; Geist Mono identifies measurements, provenance, release information, and tool output. Hot pink marks the action or reading that matters.\n\nThe score is the material signature: monochrome reflection bands clipped to large numerals, accompanied by a restrained pink marker. Supporting content remains flat and sparse. Rendered website captures retain their own source colors; those colors do not expand the RB004 interface palette.",
+    "keyCharacteristics": [
+      "Unframed, left-aligned editorial sections.",
+      "Monochrome chrome scores with hot pink actions and readings.",
+      "Underline fields and flat rectangular controls.",
+      "Readable provenance, coverage, and unknown states."
+    ],
+    "rules": [
+      {
+        "name": "The Single Accent Rule",
+        "body": "Use hot pink for primary actions, selected tools, category bars, indices, and focused fields; keep the surrounding interface monochrome.",
+        "section": "colors"
+      },
+      {
+        "name": "The Measurement Voice Rule",
+        "body": "Use Geist Mono for data and provenance; use the Inter Display stack for headings and explanatory prose.",
+        "section": "typography"
+      },
+      {
+        "name": "The Chrome Score Rule",
+        "body": "Reserve metallic reflection gradients for score numerals. Keep ordinary surfaces flat; the small score marker and live status dot may glow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve black space, large left-aligned type, and horizontal section rules.",
+      "Do keep provenance and unavailable-check notes readable beside the results they qualify.",
+      "Do use the supplied Inter Display and Geist Mono files for exported score graphics.",
+      "Do preserve visible pink focus outlines, keyboard tabs, 44px control targets, and reduced-motion behavior."
+    ],
+    "donts": [
+      "Don't introduce additional interface hues or borrow the captured website’s palette.",
+      "Don't replace editorial rows with gray outlined card grids, inflated radii, or decorative icon tiles.",
+      "Don't flatten the chrome score to white or spread its reflection gradient into backgrounds.",
+      "Don't invent proof, measured values, or availability to fill a visual gap."
+    ]
+  }
+}
