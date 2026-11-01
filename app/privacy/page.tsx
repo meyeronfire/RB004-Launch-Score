@@ -1,0 +1,9 @@
+import type { Metadata } from "next";
+import { PRODUCT_NAME } from "@/config/release";
+import { LegalPage } from "@/components/legal-page";
+
+export const metadata: Metadata = { title: `Privacy — ${PRODUCT_NAME}`, robots: { index: true, follow: true } };
+
+export default function PrivacyPage() {
+  return <LegalPage title="Privacy"><section><h2>Information a scan uses</h2><p>When you request a scan, we process the URL and the publicly visible page content needed to render it, check links, and produce a report. The report may include screenshots, page text excerpts, technical checks, and findings. Scan records are kept so the report link can continue to work.</p></section><section><h2>Network limits</h2><p>A hashed network address is used to apply the free-scan limit. The raw address is not stored in the scan record.</p></section><section><h2>Optional email</h2><p>If you enter an email on a report or at checkout, we store it with the report for delivery or purchase support. Email delivery uses Resend only when that service is configured. We do not add report emails to a marketing list in this release.</p></section><section><h2>Service providers</h2><p>Payments use Stripe. When configured, PageSpeed Insights receives the scanned URL, and the language-model provider receives page text and screenshots to prepare copy and content findings. Do not scan pages containing information you are not authorized to share with those providers.</p></section><section><h2>Questions</h2><p>For privacy questions, use the contact options on the <a href="https://regularbasis.studio">Regular Basis site</a>.</p></section></LegalPage>;
+}
