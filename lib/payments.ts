@@ -55,8 +55,6 @@ export async function makeCheckout(scanId: string) {
   // Commit an issuance attempt before Stripe: a lost API response can still be reconciled by webhook metadata.
   await sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtext(${scanId}))`;
-    const prior = await tx<{ id: string }[]>`SELECT id FROM purchases WHERE scan_id=${scanId} AND revoked_at IS NULL LIMIT 1`;
-    if (prior.length) throw new Error("This report has already been purchased. Use the receipt email to open it.");
     const reservation = await tx<{ stripe_session_id: string }[]>`SELECT stripe_session_id FROM checkout_reservations WHERE scan_id=${scanId} AND expires_at>now() FOR UPDATE`;
     if (reservation.length) throw new Error("Checkout is already open for this report. Finish that session or try again in an hour.");
     await tx`INSERT INTO checkout_sessions (stripe_session_id,scan_id,expires_at) VALUES (${attemptId},${scanId},to_timestamp(${expiresAt}))`;
@@ -107,6 +105,14 @@ export async function activatePurchase(event: Stripe.Event, session: Stripe.Chec
     const claimToken = randomBytes(32).toString("base64url");
     await tx`INSERT INTO checkout_access_tokens (token_hash,scan_id,stripe_session_id,expires_at)
       VALUES (${hashAccessToken(claimToken)},${scanId},${session.id},NULL) ON CONFLICT (stripe_session_id) DO NOTHING`;
+    const rescanToken = randomBytes(32).toString("base64url");
+    const paidScan = await tx<{ url: string }[]>`SELECT url FROM scans WHERE id=${scanId} LIMIT 1`;
+    const rescanAccess = paidScan[0] ? await tx<{ expires_at: Date }[]>`INSERT INTO paid_url_access (token_hash,token_ciphertext,scan_id,stripe_session_id,normalized_url,recipient,expires_at)
+      VALUES (${hashAccessToken(rescanToken)},${encryptClaimToken(rescanToken,encryptionKey)},${scanId},${session.id},${paidScan[0].url},${email.toLowerCase()},now()+interval '7 days') ON CONFLICT (token_hash) DO UPDATE SET token_hash=EXCLUDED.token_hash RETURNING expires_at` : [];
+    if (rescanAccess[0]) {
+      const paidRescanExpiresAt = rescanAccess[0].expires_at.toISOString();
+      await tx`UPDATE scans SET is_paid=true,payload=jsonb_set(payload,'{paidRescanExpiresAt}',to_jsonb(${paidRescanExpiresAt}::text),true) WHERE id=${scanId}`;
+    }
     const ciphertext = encryptClaimToken(claimToken, encryptionKey);
     await tx`INSERT INTO report_email_outbox (stripe_session_id,scan_id,recipient,token_ciphertext)
       VALUES (${session.id},${scanId},${email.toLowerCase()},${ciphertext}) ON CONFLICT (stripe_session_id) DO NOTHING`;
@@ -130,7 +136,10 @@ export async function activateRefund(event: Stripe.Event, charge: Stripe.Charge)
     for (const { scan_id, stripe_session_id } of purchases) {
       await tx`SELECT id FROM scans WHERE id=${scan_id} FOR UPDATE`;
       const otherPaid = await tx<{ exists: boolean }[]>`SELECT EXISTS(SELECT 1 FROM purchases WHERE scan_id=${scan_id} AND revoked_at IS NULL) AS exists`;
-      if (!otherPaid[0]?.exists) await tx`UPDATE scans SET is_paid=false,payload=jsonb_set(payload,'{paid}','false'::jsonb) WHERE id=${scan_id}`;
+      if (!otherPaid[0]?.exists) {
+        await tx`UPDATE scans SET is_paid=false,payload=jsonb_set(payload,'{paid}','false'::jsonb) WHERE id=${scan_id}`;
+      }
+      await tx`UPDATE paid_url_access SET expires_at=now() WHERE stripe_session_id=${stripe_session_id}`;
       await tx`UPDATE report_email_outbox SET status='cancelled',token_ciphertext='',locked_at=NULL WHERE stripe_session_id=${stripe_session_id}`;
     }
   });
@@ -160,8 +169,11 @@ export async function deliverClaimEmail() {
       if (!purchase.length || !current.length) return;
       const token = decryptClaimToken(job.token_ciphertext, tokenEncryptionKey());
       const base = SITE_URL.replace(/\/$/, "");
-      const claimUrl = `${base}/api/scans/${encodeURIComponent(job.scan_id)}/claim?token=${encodeURIComponent(token)}`;
-      const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json", "Idempotency-Key": `report-${hashAccessToken(job.token_ciphertext)}` }, signal: AbortSignal.timeout(8000), body: JSON.stringify({ from: process.env.RESEND_FROM_EMAIL, to: [job.recipient], subject: `${PRODUCT_NAME}: your verified report`, text: `Your one-time ${PRODUCT_NAME} report is ready. Open the secure purchaser link: ${claimUrl}\n\nThis link grants access to the paid report. Do not forward it.` }) });
+      const rescanRows = await tx<{ token_ciphertext: string }[]>`SELECT token_ciphertext FROM paid_url_access WHERE scan_id=${job.scan_id} AND stripe_session_id=${job.stripe_session_id} AND recipient=${job.recipient} AND expires_at>now() ORDER BY created_at DESC LIMIT 1`;
+      const rescanToken = rescanRows[0] ? decryptClaimToken(rescanRows[0].token_ciphertext, tokenEncryptionKey()) : "";
+      const claimUrl = `${base}/api/scans/${encodeURIComponent(job.scan_id)}/claim?token=${encodeURIComponent(token)}${rescanToken ? `&rescan=${encodeURIComponent(rescanToken)}` : ""}`;
+      const rescanText = rescanToken ? "Your purchase also includes unlimited re-scans of this exact URL for seven days." : "";
+      const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json", "Idempotency-Key": `report-${hashAccessToken(job.token_ciphertext)}` }, signal: AbortSignal.timeout(8000), body: JSON.stringify({ from: process.env.RESEND_FROM_EMAIL, to: [job.recipient], subject: `${PRODUCT_NAME}: your verified report`, text: `Your one-time ${PRODUCT_NAME} report is ready. Open the secure purchaser link: ${claimUrl}\n\n${rescanText}\n\nThis link grants access to the paid report. Do not forward it.` }) });
       if (!response.ok) throw new Error(`Resend returned HTTP ${response.status}`);
       await tx`UPDATE report_email_outbox SET status='sent',sent_at=now(),token_ciphertext='',locked_at=NULL WHERE stripe_session_id=${job.stripe_session_id}`;
     });
@@ -193,16 +205,27 @@ export async function requestClaimEmail(scanId: string, email: string) {
   });
 }
 
-export async function getPaidReport(scanId: string, token: string) {
+async function authorizedPaidScan(scanId: string, token: string) {
   const sql = database(); if (!sql) return undefined;
   const tokenHash = hashAccessToken(token);
-  const rows = await sql<{ token_hash: string }[]>`SELECT token_hash FROM checkout_access_tokens t JOIN purchases p ON p.stripe_session_id=t.stripe_session_id WHERE t.scan_id=${scanId} AND p.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>now()) AND t.token_hash=${tokenHash} LIMIT 1`;
+  const rows = await sql<{ token_hash: string }[]>`SELECT t.token_hash FROM checkout_access_tokens t JOIN purchases p ON p.stripe_session_id=t.stripe_session_id WHERE t.scan_id=${scanId} AND p.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>now()) AND t.token_hash=${tokenHash}
+    UNION ALL SELECT a.token_hash FROM paid_url_access a JOIN purchases p ON p.stripe_session_id=a.stripe_session_id AND p.revoked_at IS NULL JOIN scans s ON s.id=${scanId} AND a.normalized_url=s.url WHERE a.token_hash=${tokenHash} AND a.expires_at>now() LIMIT 1`;
   if (!rows[0]) return undefined;
   const expected = Buffer.from(rows[0].token_hash); const actual = Buffer.from(tokenHash);
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return undefined;
   const scan = await readScan(scanId);
-  if (!scan?.paid || !scan.paidPayload?.available) return undefined;
+  return scan?.paid ? scan : undefined;
+}
+
+export async function getPaidReport(scanId: string, token: string) {
+  const scan = await authorizedPaidScan(scanId, token);
+  if (!scan?.paidPayload?.available || !scan.paidPayload.paidModelReady) return undefined;
   return scan.paidPayload;
+}
+
+export async function isPaidReportPreparing(scanId: string, token: string) {
+  const scan = await authorizedPaidScan(scanId, token);
+  return Boolean(scan && (!scan.paidPayload?.available || !scan.paidPayload.paidModelReady));
 }
 
 export async function verifyClaimToken(scanId: string, token: string) {
@@ -218,4 +241,12 @@ export async function verifyClaimToken(scanId: string, token: string) {
     }
     return true;
   });
+}
+
+export async function verifyPaidRescanToken(token: string, scanId?: string, normalizedUrl?: string) {
+  const sql = database(); if (!sql) return undefined;
+  const tokenHash = hashAccessToken(token);
+  const rows = await sql<{ scan_id: string; normalized_url: string; expires_at: Date }[]>`SELECT a.scan_id,a.normalized_url,a.expires_at FROM paid_url_access a JOIN purchases p ON p.stripe_session_id=a.stripe_session_id AND p.revoked_at IS NULL WHERE a.token_hash=${tokenHash} AND a.expires_at>now() LIMIT 1`;
+  if (!rows[0] || (scanId && rows[0].scan_id !== scanId) || (normalizedUrl && rows[0].normalized_url !== normalizedUrl)) return undefined;
+  return rows[0];
 }

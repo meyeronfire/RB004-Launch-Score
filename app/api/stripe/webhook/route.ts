@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { activatePurchase, activateRefund, stripeClient, verifyStripeEvent } from "@/lib/payments";
 import { trackPurchased } from "@/lib/analytics-server";
+import { enqueuePaidPrompt } from "@/lib/paid-prompt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,11 @@ export async function POST(request: Request) {
   if (event.type === "checkout.session.completed") {
     try {
       const purchased = await activatePurchase(event, event.data.object as Stripe.Checkout.Session);
-      if (purchased) await trackPurchased();
+      if (purchased) {
+        await trackPurchased();
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.scanId) await enqueuePaidPrompt(session.metadata.scanId);
+      }
     }
     catch (error) { console.error("Verified Stripe event could not unlock a report:", error instanceof Error ? error.message : "Unknown error"); return Response.json({ error: "Purchase processing will be retried." }, { status: 500 }); }
   }

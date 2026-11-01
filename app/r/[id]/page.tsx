@@ -12,7 +12,7 @@ export async function generateMetadata({ params }: PageProps<"/r/[id]">): Promis
   if (id === "example") return { title: `${exampleReport.score}/100 Example ${PRODUCT_NAME} for regularbasis.studio — ${RELEASE_CODE}`, robots: { index: false, follow: false }, openGraph: { title: `${exampleReport.score}/100 ${PRODUCT_NAME} for regularbasis.studio`, description: "An example based on a real, verified studio-site scan.", images: [`/r/${id}/opengraph-image`] }, twitter: { card: "summary_large_image", title: `${exampleReport.score}/100 ${PRODUCT_NAME} for regularbasis.studio`, images: [`/r/${id}/opengraph-image`] } };
   if (!scan) return { title: "Report not found" };
   const title = scan.status === "complete" ? `${scan.score}/100 ${PRODUCT_NAME} for ${scan.domain}` : `${PRODUCT_NAME} report`;
-  return { title: `${title} — ${RELEASE_CODE}`, robots: { index: false, follow: false }, openGraph: { title, description: "A rendered review of clarity, conversion, trust, and technical readiness.", images: [`/r/${id}/opengraph-image`] }, twitter: { card: "summary_large_image", title, images: [`/r/${id}/opengraph-image`] } };
+  return { title: `${title} — ${RELEASE_CODE}`, robots: { index: false, follow: false }, openGraph: { title, description: "A rendered review of clarity, conversion, design, trust, technical readiness, and security.", images: [`/r/${id}/opengraph-image`] }, twitter: { card: "summary_large_image", title, images: [`/r/${id}/opengraph-image`] } };
 }
 
 export default async function ReportPage({ params }: PageProps<"/r/[id]">) {

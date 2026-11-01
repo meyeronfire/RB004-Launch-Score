@@ -1,6 +1,6 @@
 # RB004 Launch Score
 
-Launch Score renders a public page at desktop and mobile sizes, checks page and link signals, and creates a shareable evidence report. Scores combine measured findings with category coverage limits; unknown checks do not earn points. A real scan of the Regular Basis studio site is available at `/r/example` as a dated example, with its unavailable PageSpeed and language-model checks identified.
+Launch Score renders a public page at desktop and mobile sizes, checks page and link signals, and creates a shareable evidence report. Scores combine measured findings with category coverage limits; unknown checks do not earn points. A saved scan of the Regular Basis studio site is available at `/r/example` as a dated example.
 
 ## Local setup
 
@@ -18,15 +18,15 @@ The default port is 3000. For this workspace's preview use `PLAYWRIGHT_CHANNEL=c
 
 ## Release and scoring configuration
 
-Change `RELEASE_CODE`, `PRODUCT_NAME`, and `PRICE_FIX_PROMPT_USD` in `config/release.ts`. The future $29 re-check flag is off; no re-check is sold. Studio catalog links point to the verified RB001–RB003 products.
+Change `RELEASE_CODE`, `PRODUCT_NAME`, and `PRICE_FIX_PROMPT_USD` in `config/release.ts`. The separate $29 re-check product remains off; a $12 report purchase includes unlimited re-scans of that URL for seven days. Studio catalog links point to the verified RB001–RB003 products.
 
-`lib/score.ts` weights Clarity 35%, Conversion 30%, Trust 15%, and Technical 20%. Critical/high/medium/low findings deduct 22/13/7/3 category points. Each category is capped by verified check coverage (`50 + 50 × coverage`); a model supplies quote-grounded findings but never the score. The weighted result is rounded to 0–100. A URL plus fetched-content hash caches analysis for 24 hours; cached copies never inherit purchaser or lead data. Five saved HTML fixtures and scoring snapshots cover expected ranges.
+`config/scoring.ts` weights Clarity 25%, Conversion 25%, Design & Brand 15%, Trust 10%, Technical 15%, and Security 10%. The four PageSpeed Insights categories inform the Technical score once as a blended signal. Critical/high/medium/low findings deduct 22/13/7/3 category points. Each category is capped by verified check coverage (`50 + 50 × coverage`); a model supplies quote-grounded findings but never the score. The weighted result is rounded to 0–100. Five saved page fixtures and a local planted-file server exercise exposure detection without relaxing the production SSRF guard.
 
 Fonts and favicon come from the existing Regular Basis assets. Exported graphics use decompressed TrueType equivalents of the same Inter Display and Geist Mono fonts; the image renderer does not accept WOFF2. Example captures retain their live source and capture date in image metadata.
 
 ## Production services
 
-Apply [`db/migrations/001_initial.sql`](db/migrations/001_initial.sql) to PostgreSQL. Set `DATABASE_URL` in the Next.js app and the separate scan worker. Production scan requests fail closed unless the database and a recently reporting worker are available. The app process accepts jobs; the worker claims them with expiring lease tokens, stores progress and reports in PostgreSQL, and handles the email outbox.
+Apply [`db/migrations/001_initial.sql`](db/migrations/001_initial.sql) and [`db/migrations/002_free_tier_costs.sql`](db/migrations/002_free_tier_costs.sql) to PostgreSQL. Set `DATABASE_URL` in the Next.js app and the separate scan worker. Production scan requests fail closed unless the database and a recently reporting worker are available. The app process accepts jobs; the worker claims them with expiring lease tokens, stores progress and reports in PostgreSQL, and handles the email outbox. Free scans allow one anonymous scan per device/IP, then up to three lifetime scans per verified email. Five scan requests per IP are allowed each hour. Identical normalized URLs reuse a complete report for 24 hours. Set `FREE_DAILY_BUDGET_USD` (default `$5`) to pause free scans when estimated daily free-scan costs reach the budget; paid scans remain available. The protected `/admin` dashboard requires `ADMIN_SECRET`.
 
 Run the web process with `NODE_ENV=production npm start`, and run one or more workers with `NODE_ENV=production npm run worker`. Production workers require Linux, Playwright Chromium, `unshare`, and permission to create user and network namespaces. Validate that `unshare --user --map-root-user --net -- true` succeeds in the worker container before routing traffic to it. The Chromium process starts inside a network namespace with no external network; Playwright communicates over its local driver pipe while the Node worker performs DNS-pinned, bounded fetches. Disable browser host networking and keep the worker's host firewall restricted to required PostgreSQL, email, Stripe-independent app, and public page access. Do not run the production worker in a serverless function or a container where namespace isolation is unavailable: it refuses to start.
 
@@ -36,10 +36,10 @@ For self-hosted production, set `TRUSTED_PROXY_IP_HEADER` only to a header overw
 
 ## Optional services and paid reports
 
-- `OPENAI_API_KEY` enables screenshot and visible-text review and evidence-constrained copy drafts. Without it, the app says those checks are unavailable and does not offer a paid Fix Prompt.
+- `OPENAI_API_KEY` enables screenshot and visible-text review and evidence-constrained copy drafts. `LLM_MODEL_FREE` selects the free scan model; `LLM_MODEL_PAID` selects the paid report and Fix Prompt model. Without the key, the app says those checks are unavailable and does not offer a paid Fix Prompt.
 - `PAGESPEED_API_KEY` enables separate mobile and desktop PageSpeed checks. Without it, those checks remain unknown and scores are coverage-capped.
 - Stripe requires `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. The webhook accepts signed events, validates a fixed one-time $12 USD card payment bound to the scan, and processes duplicate events idempotently.
-- Paid checkout also requires `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and a stable base64 `REPORT_TOKEN_ENCRYPTION_KEY` containing 32 random bytes. Checkout is disabled until purchaser email delivery is ready. Only after a verified payment does the webhook create a hashed report token and encrypted email outbox entry. The worker sends the purchaser a claim link; opening it creates an HttpOnly cookie for the private paid-report endpoint and redirects to the clean public report URL. The public share page and Open Graph image never include paid findings. Full refunds revoke purchaser access and cancel unsent claim emails.
+- `RESEND_API_KEY` and `RESEND_FROM_EMAIL` enable passwordless free-scan email links and paid report delivery. Paid checkout also requires a stable base64 `REPORT_TOKEN_ENCRYPTION_KEY` containing 32 random bytes. Checkout is disabled until purchaser email delivery is ready. Only after a verified payment does the webhook create a hashed report token and encrypted email outbox entry. The worker sends the purchaser a claim link; opening it creates an HttpOnly cookie for the private paid-report endpoint and redirects to the clean public report URL. The public share page and Open Graph image never include paid findings. Full refunds revoke purchaser access and cancel unsent claim emails.
 - The report page can resend access after checking the supplied checkout email against an active purchase. The endpoint returns the same generic response for matching and non-matching email addresses; a new secure token replaces the previous token only for a verified purchaser.
 - A payment is not unlocked from a browser query parameter or the Stripe return URL. Only a verified webhook and purchaser claim grant access.
 
@@ -47,7 +47,7 @@ If an email provider is temporarily unavailable after payment, the encrypted out
 
 ## Data and limitations
 
-The app stores scan URL, rendered snapshots, findings, scores, scan progress, submitted lead email, purchase receipt identifiers, hashed purchaser tokens, and encrypted pending email tokens. Public report APIs expose only the free projection. Optional model and PageSpeed results may be unavailable. Technical signals such as proof, pricing, FAQ, and contact use transparent heuristics; they are evidence for review, not a guarantee of conversion. PageSpeed is an external estimate. Rechecks are not enabled.
+The app stores scan URL, rendered snapshots, findings, scores, scan progress, submitted lead email, purchase receipt identifiers, hashed purchaser tokens, and encrypted pending email tokens. Public report APIs expose only the free projection. Optional model and PageSpeed results may be unavailable. Technical signals such as proof, pricing, FAQ, and contact use transparent heuristics; they are evidence for review, not a guarantee of conversion. PageSpeed is an external estimate.
 
 The scanner respects robots.txt for the page and fetched resources. When robots rules cannot be confirmed, it stops the scan. It checks up to 50 same-origin links, caps browser requests and downloaded bytes, blocks WebSockets/service workers, and does not load user-provided Open Graph images into the app server or share card.
 

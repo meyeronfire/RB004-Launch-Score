@@ -2,6 +2,7 @@ import { claimNextScan, workerHeartbeat } from "../lib/store";
 import { processScan } from "../lib/scanner";
 import { verifyWorkerNetworkIsolation } from "../lib/browser-isolation";
 import { deliverClaimEmail } from "../lib/payments";
+import { processPaidPromptJob } from "../lib/paid-prompt";
 
 if (!process.env.DATABASE_URL) throw new Error("Set DATABASE_URL before starting the production scan worker.");
 verifyWorkerNetworkIsolation();
@@ -17,6 +18,7 @@ async function main() {
     try {
       await workerHeartbeat(workerId);
       await deliverClaimEmail();
+      await processPaidPromptJob();
       const job = await claimNextScan();
       if (job) {
         const heartbeat = setInterval(() => { void workerHeartbeat(workerId).catch(() => undefined); }, 10_000);

@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import type { Page } from "playwright";
 import { deterministicFindings, pageSnapshot } from "../lib/scanner";
+import { leftoverFindings } from "../lib/depth-checks";
 
 const pages = ["01-complete.html", "02-missing-headline-action.html", "03-template-no-trust.html", "04-mobile-overflow.html", "05-technical-gaps.html"];
 
@@ -52,7 +53,7 @@ describe("saved rendered-page fixtures", () => {
     }
     const findings = deterministicFindings({ page: snapshot, mobile: snapshot, links: { broken: [], checked: 0, unknownCount: 0 }, status: 200, protocol: "https:", ogImage: { state: "unknown", note: "No fixture OG image." }, ogImageTooSmall: false });
     if (name === "02-missing-headline-action.html") expect(findings.some((finding) => finding.title === "The page has no main headline")).toBe(true);
-    if (name === "03-template-no-trust.html") expect(findings.some((finding) => finding.title === "Placeholder copy remains on the page")).toBe(true);
+    if (name === "03-template-no-trust.html") expect(leftoverFindings({ text: `${snapshot.text} ${snapshot.html}`, title: snapshot.title, favicon: snapshot.favicon, imageUrls: snapshot.imageUrls, placeholderLinks: snapshot.placeholderLinks, testimonials: snapshot.testimonialBlocks, consoleErrors: 0, comingSoonCount: 0 }).some((finding) => finding.title === "Template text or a default title remains on the page")).toBe(true);
     if (name === "04-mobile-overflow.html") expect(findings.some((finding) => finding.title === "The mobile page overflows horizontally")).toBe(true);
     if (name === "05-technical-gaps.html") expect(findings.some((finding) => finding.title === "The page has no viewport setting")).toBe(true);
   });

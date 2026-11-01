@@ -1,0 +1,22 @@
+{
+  "desktop": {
+    "fontFamilies": ["Inter Display", "Geist Mono Variable"],
+    "colors": ["#000000", "#ffffff", "#ff2e7e"],
+    "spacingValues": ["16px", "32px"],
+    "sectionNames": ["Hero", "Pricing"],
+    "samples": [
+      { "device": "Desktop", "section": "Hero", "tag": "P", "text": "A clear offer for independent teams", "fontFamily": "Inter Display", "fontSize": 18, "lineHeight": "28px", "fontWeight": "400", "color": "rgb(255, 255, 255)", "background": "rgb(0, 0, 0)", "spacing": "16px 0px 0px 0px 0px", "backgroundImage": "none", "classes": "hero-copy", "alt": "" },
+      { "device": "Desktop", "section": "Pricing", "tag": "P", "text": "One-time payment", "fontFamily": "Geist Mono Variable", "fontSize": 14, "lineHeight": "20px", "fontWeight": "400", "color": "rgb(90, 90, 90)", "background": "rgb(0, 0, 0)", "spacing": "8px 0px 0px 0px 0px", "backgroundImage": "none", "classes": "price-note", "alt": "" }
+    ]
+  },
+  "mobile": {
+    "fontFamilies": ["Inter Display", "Geist Mono Variable"],
+    "colors": ["#000000", "#ffffff", "#ff2e7e"],
+    "spacingValues": ["12px", "24px"],
+    "sectionNames": ["Hero"],
+    "samples": [
+      { "device": "Mobile", "section": "Hero", "tag": "H1", "text": "A clear offer for independent teams", "fontFamily": "Inter Display", "fontSize": 38, "lineHeight": "40px", "fontWeight": "600", "color": "rgb(255, 255, 255)", "background": "rgb(0, 0, 0)", "spacing": "0px 12px 0px 0px 0px", "backgroundImage": "none", "classes": "hero-title", "alt": "" }
+    ]
+  },
+  "expected": { "fontFamilies": 2, "colors": 3, "contrastFailureCount": 1, "findingTitle": "Text contrast is low in Pricing" }
+}

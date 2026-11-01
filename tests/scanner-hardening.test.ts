@@ -11,6 +11,13 @@ describe("scanner network hardening", () => {
     expect(normalizePublicUrl("http://example.com").port).toBe("");
   });
 
+  it("accepts a bare domain as HTTPS while keeping local and unsupported targets blocked", () => {
+    expect(normalizePublicUrl("www.getklare.com").toString()).toBe("https://www.getklare.com/");
+    expect(normalizePublicUrl("getklare.com/pricing").toString()).toBe("https://getklare.com/pricing");
+    expect(normalizePublicUrl("http://getklare.com").protocol).toBe("http:");
+    for (const url of ["localhost", "127.0.0.1", "ftp://example.com"]) expect(() => normalizePublicUrl(url)).toThrow();
+  });
+
   it("rejects IPv6 transition and special-use networks", () => {
     for (const address of ["2001::1", "2001:db8::1", "2002:c000:0201::1", "2001:2::1", "2001:10::1", "2001:20::1"]) {
       expect(isPublicAddress(address), address).toBe(false);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fixtures from "./fixtures/page-snapshots.json";
 import { deterministicFindings, summarizeLinkStatuses, isRobotsDisallowed } from "../lib/scanner";
-import { scoreFindings } from "../lib/score";
+import { CATEGORY_WEIGHTS, scoreFindings } from "../lib/score";
 import { isPublicAddress, normalizePublicUrl, UnsafeTargetError } from "../lib/ssrf";
 import { readBoundedBody } from "../lib/http";
 import { publicScan } from "../lib/store";
@@ -21,6 +21,10 @@ function makeInput(overrides: (typeof fixtures)[number]) {
 }
 
 describe("scoring fixtures", () => {
+  it("uses the six requested category weights totaling 100", () => {
+    expect(CATEGORY_WEIGHTS).toEqual({ clarity: 25, conversion: 25, design_brand: 15, trust: 10, technical: 15, security: 10 });
+    expect(Object.values(CATEGORY_WEIGHTS).reduce((sum, weight) => sum + weight, 0)).toBe(100);
+  });
   for (const fixture of fixtures) {
     it(`${fixture.id} stays within its reviewed score range`, () => {
       const { input, coverage } = makeInput(fixture);
@@ -32,7 +36,7 @@ describe("scoring fixtures", () => {
   }
   it("limits category scores when only a partial set of checks is available", () => {
     const scored = scoreFindings([], { clarity: 0.6, conversion: 0.85, trust: 0.75, technical: 0.9 });
-    expect(scored.categoryScores).toEqual({ clarity: 80, conversion: 93, trust: 88, technical: 95 });
+    expect(scored.categoryScores).toEqual({ clarity: 80, conversion: 93, design_brand: 78, trust: 88, technical: 95, security: 78 });
     expect(scored.score).toBeLessThan(100);
   });
 });
@@ -73,13 +77,16 @@ describe("free and paid report boundaries", () => {
     findings: Array.from({ length: 5 }, (_, index) => ({ id: `finding-${index}`, category: "trust" as const, severity: "low" as const, title: `Finding ${index}`, why_it_matters: "A reason.", evidence: "private evidence", fix: "private fix" })),
     paid: false, leaseToken: "private-lease", leadEmail: "private@example.test", paidPayload: { available: true, prompts: { Cursor: "private prompt" }, findings: [], copyDrafts: { status: "private", headlines: [], subheadline: "", cta: "", faq: "", metaTitle: "", metaDescription: "" } },
   };
-  it("projects only the three free findings and no evidence, fixes, email, or paid payload", () => {
+  it("projects all finding summaries with no evidence, fixes, email, or paid payload", () => {
     const projection = publicScan(report) as Record<string, unknown>;
     const findings = projection.findings as Array<Record<string, unknown>>;
-    expect(findings).toHaveLength(3);
+    expect(findings).toHaveLength(5);
     expect(findings[0]).toMatchObject({ title: "Finding 0", why_it_matters: "A reason." });
+    expect(findings[0].section).toBe("other");
     expect(findings[0]).not.toHaveProperty("fix"); expect(findings[0]).not.toHaveProperty("evidence");
-    expect(projection.lockedCount).toBe(2); expect(projection.lockedTitles).toEqual(["Finding 3", "Finding 4"]);
+    expect(projection.lockedCount).toBe(2); expect(projection.lockedTitles).toEqual([]);
+    expect(projection.paidAvailable).toBe(true);
+    expect(projection.checkoutAvailable).toBe(false);
     expect(JSON.stringify(projection)).not.toContain("private prompt"); expect(JSON.stringify(projection)).not.toContain("private@example.test");
     expect(projection).not.toHaveProperty("leaseToken");
     expect(JSON.stringify(publicScan({ ...report, paid: true }))).not.toContain("private fix");
@@ -132,5 +139,18 @@ describe("free and paid report boundaries", () => {
     expect(db.public.one("SELECT expires_at FROM checkout_access_tokens WHERE token_hash='hash'").expires_at).toBeNull();
     expect(db.public.many("INSERT INTO stripe_events (event_id) VALUES ('evt_1') ON CONFLICT DO NOTHING RETURNING event_id")).toHaveLength(1);
     expect(db.public.many("INSERT INTO stripe_events (event_id) VALUES ('evt_1') ON CONFLICT DO NOTHING RETURNING event_id")).toHaveLength(0);
+  });
+  it("keeps free access, cost telemetry, paid rescans, and prompt jobs server-only", async () => {
+    const migration = await readFile("db/migrations/002_free_tier_costs.sql", "utf8");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS free_scan_entitlements");
+    expect(migration).toContain("scans_used integer NOT NULL DEFAULT 1 CHECK (scans_used BETWEEN 0 AND 3)");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS scan_costs");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS paid_prompt_costs");
+    expect(migration).toContain("ALTER TABLE scans ENABLE ROW LEVEL SECURITY");
+    expect(migration).toContain("ALTER TABLE purchases ENABLE ROW LEVEL SECURITY");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS paid_url_access");
+    expect(migration).toContain("expires_at timestamptz NOT NULL");
+    expect(migration).toContain("ALTER TABLE free_waitlist ENABLE ROW LEVEL SECURITY");
+    expect(migration).toContain("ALTER TABLE scan_costs ENABLE ROW LEVEL SECURITY");
   });
 });

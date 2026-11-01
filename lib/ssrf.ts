@@ -4,6 +4,7 @@ import { isIP } from "node:net";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import type { IncomingHttpHeaders } from "node:http";
+import { currentRequestBudget, type ScanRequestBudget } from "./request-budget";
 
 export class UnsafeTargetError extends Error {}
 export class SafeFetchError extends Error {}
@@ -69,7 +70,9 @@ export function isPublicAddress(address: string): boolean {
 
 export function normalizePublicUrl(input: string): URL {
   let url: URL;
-  try { url = new URL(input.trim()); } catch { throw new UnsafeTargetError("Enter a complete page URL, including https://."); }
+  const value = input.trim();
+  const explicitScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(value);
+  try { url = new URL(explicitScheme ? value : `https://${value}`); } catch { throw new UnsafeTargetError("Enter a valid public website address."); }
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new UnsafeTargetError("Only public HTTP and HTTPS pages can be scanned.");
   if (url.username || url.password) throw new UnsafeTargetError("URLs containing usernames or passwords cannot be scanned.");
   const expectedPort = url.protocol === "https:" ? "443" : "80";
@@ -91,7 +94,7 @@ async function publicDns(hostname: string) {
 export type SafeResponse = { status: number; headers: IncomingHttpHeaders; body: Buffer; finalUrl: string; redirects: string[] };
 
 /** Fetches a public resource with DNS validation and IP pinning on every connection. */
-export async function safeFetch(input: string, options: { timeoutMs?: number; maxBytes?: number; maxRedirects?: number; headers?: Record<string, string>; beforeRedirect?: (target: URL) => void | Promise<void>; statusOnly?: boolean } = {}): Promise<SafeResponse> {
+export async function safeFetch(input: string, options: { timeoutMs?: number; maxBytes?: number; maxRedirects?: number; headers?: Record<string, string>; beforeRedirect?: (target: URL) => void | Promise<void>; statusOnly?: boolean; method?: "GET" | "HEAD" | "OPTIONS"; budget?: ScanRequestBudget } = {}): Promise<SafeResponse> {
   const scanSignal = currentScanSignal();
   if (scanSignal?.aborted) throw new SafeFetchError("The scan exceeded its time limit.");
   const timeoutMs = options.timeoutMs ?? 9_000;
@@ -113,6 +116,7 @@ export async function safeFetch(input: string, options: { timeoutMs?: number; ma
     let lastError: unknown;
     for (const record of records) {
       try {
+        (options.budget ?? currentRequestBudget())?.consume();
         response = await new Promise((resolve, reject) => {
           let settled = false;
           const cleanup = () => {
@@ -131,7 +135,7 @@ export async function safeFetch(input: string, options: { timeoutMs?: number; ma
           const abort = () => fail(new SafeFetchError("The scan exceeded its time limit."));
           const transport = current.protocol === "https:" ? httpsRequest : httpRequest;
           const lookupPinned = (_hostname: string, _opts: unknown, cb: (error: NodeJS.ErrnoException | null, address: string, family: number) => void) => cb(null, record.address, record.family);
-          const req = transport(current, { method: "GET", autoSelectFamily: false, headers: { "user-agent": "RB004-Launch-Score/1.0 (+https://regularbasis.studio)", accept: "text/html,application/xhtml+xml,image/avif,image/webp,*/*;q=0.7", ...options.headers }, lookup: lookupPinned as never, servername: host } as never, (res) => {
+          const req = transport(current, { method: options.method ?? "GET", autoSelectFamily: false, headers: { "user-agent": "RB004-Launch-Score/1.0 (+https://regularbasis.studio)", accept: "text/html,application/xhtml+xml,image/avif,image/webp,*/*;q=0.7", ...options.headers }, lookup: lookupPinned as never, servername: host } as never, (res) => {
             res.on("aborted", () => fail(new SafeFetchError("The page response ended before it was complete.")));
             res.on("error", fail);
             res.on("close", () => { if (!res.complete) fail(new SafeFetchError("The page response ended before it was complete.")); });

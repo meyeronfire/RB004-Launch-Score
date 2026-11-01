@@ -14,7 +14,8 @@ vi.mock("../lib/store", () => ({
   },
 }));
 vi.mock("stripe", () => ({ default: class { checkout = { sessions: { create: mocks.create } }; } }));
-import { activatePurchase, activateRefund, decryptClaimToken, deliverClaimEmail, getPaidReport, makeCheckout, requestClaimEmail, verifyClaimToken } from "../lib/payments";
+import { activatePurchase, activateRefund, decryptClaimToken, deliverClaimEmail, getPaidReport, makeCheckout, requestClaimEmail, verifyClaimToken, verifyPaidRescanToken } from "../lib/payments";
+import { enqueuePaidPrompt } from "../lib/paid-prompt";
 
 const scanId = "11111111-1111-4111-8111-111111111111";
 const key = Buffer.alloc(32, 7);
@@ -38,6 +39,7 @@ async function counts(table: string) { return Number((await db.query<{ count: nu
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(await readFile("db/migrations/001_initial.sql", "utf8"));
+  await db.exec(await readFile("db/migrations/002_free_tier_costs.sql", "utf8"));
   await db.exec(await readFile("db/migrations/001_initial.sql", "utf8"));
   // PGlite is a single-connection PostgreSQL runtime. Transaction and row semantics are real;
   // advisory lock scheduling needs the separate hosted multi-connection acceptance check.
@@ -47,7 +49,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await db.exec("TRUNCATE scans, stripe_events, refunded_payment_intents CASCADE");
-  await db.query("INSERT INTO scans(id,url,status,phase,payload) VALUES($1,'https://example.test/','complete','Ready',$2::jsonb)", [scanId, JSON.stringify({ id: scanId, status: "complete", domain: "example.test", score: 88, paidPayload: { available: true, prompts: { Cursor: "private fix" } } })]);
+  await db.query("INSERT INTO scans(id,url,status,phase,payload) VALUES($1,'https://example.test/','complete','Ready',$2::jsonb)", [scanId, JSON.stringify({ id: scanId, status: "complete", domain: "example.test", score: 88, paidPayload: { available: true, paidModelReady: true, model: "gpt-4.1", prompts: { Cursor: "private fix" } } })]);
   vi.stubEnv("REPORT_TOKEN_ENCRYPTION_KEY", key.toString("base64"));
   vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test_fake");
@@ -128,17 +130,40 @@ describe("paid report transactions on PostgreSQL", () => {
   it("revokes only the refunded purchase and cancels its claimed email job", async () => {
     const first = (await issued("cs_first"))!;
     const second = (await issued("cs_second"))!;
+    const firstRescan = decryptClaimToken((await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_first'")).rows[0].token_ciphertext, key);
+    const secondRescan = decryptClaimToken((await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_second'")).rows[0].token_ciphertext, key);
     await db.exec("UPDATE report_email_outbox SET status='sending',locked_at=now()-interval '3 minutes' WHERE stripe_session_id='cs_first'");
     await activateRefund(event("evt_refund"), { amount_refunded: 1200, payment_intent: "pi_cs_first" } as Stripe.Charge);
     await activateRefund(event("evt_refund"), { amount_refunded: 1200, payment_intent: "pi_cs_first" } as Stripe.Charge);
     expect(await getPaidReport(scanId, first)).toBeUndefined();
     expect(await getPaidReport(scanId, second)).toBeDefined();
+    expect(await verifyPaidRescanToken(firstRescan)).toBeUndefined();
+    expect(await verifyPaidRescanToken(secondRescan)).toBeDefined();
     expect((await db.query("SELECT status FROM report_email_outbox WHERE stripe_session_id='cs_first'")).rows).toEqual([{ status: "cancelled" }]);
     await deliverClaimEmail();
     expect(fetch).toHaveBeenCalledTimes(1);
     await activateRefund(event("evt_last_refund"), { amount_refunded: 1200, payment_intent: "pi_cs_second" } as Stripe.Charge);
     expect(await getPaidReport(scanId, second)).toBeUndefined();
     expect((await db.query("SELECT is_paid FROM scans")).rows).toEqual([{ is_paid: false }]);
+  });
+  it("allows another visitor to purchase the same cached URL after an earlier purchase", async () => {
+    await issued("cs_existing_buyer");
+    const checkout = (await makeCheckout(scanId)).session;
+    expect(await activatePurchase(event("evt_new_buyer"), checkout)).toBe(true);
+    expect(await counts("purchases")).toBe(2);
+  });
+  it("does not restart a paid prompt that is already complete", async () => {
+    await db.query("INSERT INTO paid_prompt_jobs (scan_id,status,attempts) VALUES ($1,'complete',1)", [scanId]);
+    await enqueuePaidPrompt(scanId);
+    expect((await db.query("SELECT status,attempts FROM paid_prompt_jobs WHERE scan_id=$1", [scanId])).rows).toEqual([{ status: "complete", attempts: 1 }]);
+  });
+  it("does not release a free-model paid payload while its paid prompt is pending", async () => {
+    const token = (await issued("cs_model_gate"))!;
+    await db.query("UPDATE scans SET payload=jsonb_set(payload,'{paidPayload,paidModelReady}','false'::jsonb) WHERE id=$1", [scanId]);
+    expect(await getPaidReport(scanId, token)).toBeUndefined();
+    expect(await verifyClaimToken(scanId, token)).toBe(true);
+    await db.query("UPDATE scans SET payload=jsonb_set(payload,'{paidPayload,paidModelReady}','true'::jsonb) WHERE id=$1", [scanId]);
+    expect(await getPaidReport(scanId, token)).toBeDefined();
   });
   it("handles a refund delivered before its checkout completion webhook", async () => {
     await activateRefund(event("evt_early_refund"), { amount_refunded: 1200, payment_intent: "pi_cs_late" } as Stripe.Charge);

@@ -11,6 +11,7 @@ export function database() {
   return sqlClient;
 }
 const scanDir = path.join(process.cwd(), "data", "scans");
+let stripeWarningLogged = false;
 function fileFor(id: string) { if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid scan id"); return path.join(scanDir, `${id}.json`); }
 
 export async function saveScan(scan: ScanRecord, expectedLease?: string) {
@@ -66,18 +67,32 @@ export async function claimNextScan() {
   return undefined;
 }
 
-export async function findCachedScan(url: string, cacheKey: string) {
+export async function findCachedScan(url: string) {
   const sql = database();
   if (sql) {
-    const rows = await sql<{ payload: ScanRecord }[]>`SELECT payload FROM scans WHERE url=${url} AND content_hash=${cacheKey} AND status='complete' AND updated_at > now()-interval '24 hours' ORDER BY updated_at DESC LIMIT 1`;
-    return rows[0]?.payload;
+    const rows = await sql<{ payload: ScanRecord; is_paid: boolean }[]>`SELECT payload,is_paid FROM scans WHERE url=${url} AND status='complete' AND created_at > now()-interval '24 hours' ORDER BY created_at DESC LIMIT 1`;
+    return rows[0] ? { ...rows[0].payload, paid: rows[0].is_paid } : undefined;
   }
   await mkdir(scanDir, { recursive: true });
   for (const file of await readdir(scanDir)) if (file.endsWith(".json")) {
     const record = await readScan(file.slice(0, -5));
-    if (record?.status === "complete" && record.url === url && record.cacheKey === cacheKey && Date.now() - Date.parse(record.updatedAt) < 24 * 60 * 60 * 1000) return record;
+    if (record?.status === "complete" && record.url === url && Date.now() - Date.parse(record.createdAt) < 24 * 60 * 60 * 1000) return record;
   }
   return undefined;
+}
+
+export async function grantPaidCacheAccess(scanId: string, expiresAt: string) {
+  const sql = database();
+  if (sql) {
+    const rows = await sql`UPDATE scans SET is_paid=true,
+      payload=jsonb_set(jsonb_set(payload,'{paid}','true'::jsonb),'{paidRescanExpiresAt}',to_jsonb(${expiresAt}::text),true)
+      WHERE id=${scanId} AND status='complete' RETURNING id`;
+    return rows.length > 0;
+  }
+  const scan = await readScan(scanId);
+  if (!scan || scan.status !== "complete") return false;
+  await saveScan({ ...scan, paid: true, paidRescanExpiresAt: expiresAt, updatedAt: new Date().toISOString() }, scan.leaseToken);
+  return true;
 }
 
 export async function workerHeartbeat(workerId: string) {
@@ -93,12 +108,25 @@ export async function hasLiveWorker() {
 
 export function publicScan(scan: ScanRecord) {
   const safe = { ...scan };
-  delete safe.paidPayload; delete safe.leadEmail; delete safe.paid; delete safe.cacheKey; delete safe.leaseToken;
+  delete safe.paidPayload; delete safe.leadEmail; delete safe.paid; delete safe.cacheKey; delete safe.leaseToken; delete safe.shareImageUrl; delete safe.paidRescanExpiresAt;
+  const sections = ["design", "security", "seo", "leftovers", "forms", "technical", "other"] as const;
+  const findingCounts = Object.fromEntries(sections.map((section) => {
+    const items = (scan.findings ?? []).filter((item) => (item.section ?? "other") === section);
+    return [section, { total: items.length, critical: items.filter((item) => item.severity === "critical").length, high: items.filter((item) => item.severity === "high").length, medium: items.filter((item) => item.severity === "medium").length, low: items.filter((item) => item.severity === "low").length }];
+  }));
+  const encryptionKey = Buffer.from(process.env.REPORT_TOKEN_ENCRYPTION_KEY ?? "", "base64");
+  const checkoutConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.DATABASE_URL && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && encryptionKey.length === 32 && (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SITE_URL));
+  if (!checkoutConfigured && !stripeWarningLogged) { console.warn("Paid unlock is hidden because checkout dependencies are not fully configured."); stripeWarningLogged = true; }
   return { ...safe,
     paidAvailable: Boolean(scan.paidPayload?.available),
-    findings: (scan.findings ?? []).slice(0, 3).map(({ id, category, severity, title, why_it_matters }) => ({ id, category, severity, title, why_it_matters })),
+    paidReportPending: Boolean(scan.paid && (!scan.paidPayload?.available || !scan.paidPayload.paidModelReady)),
+    paidRescanAvailable: false,
+    checkoutAvailable: Boolean(scan.paidPayload?.available && checkoutConfigured),
+    shareImageAvailable: Boolean(scan.shareImageUrl),
+    findings: (scan.findings ?? []).map(({ id, category, section, severity, title, why_it_matters }) => ({ id, category, section: section ?? "other", severity, title, why_it_matters })),
+    findingCounts,
     categoryCoverage: scan.categoryCoverage,
     lockedCount: Math.max(0, (scan.findings?.length ?? 0) - 3),
-    lockedTitles: (scan.findings ?? []).slice(3).map(({ title }) => title),
+    lockedTitles: [],
   };
 }
