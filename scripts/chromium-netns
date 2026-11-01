@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "RB004 production Chromium requires Linux network isolation." >&2
+  exit 70
+fi
+if [ -z "${RB004_CHROMIUM_REAL_EXECUTABLE:-}" ] || [ ! -x "$RB004_CHROMIUM_REAL_EXECUTABLE" ]; then
+  echo "RB004 Chromium executable is not configured." >&2
+  exit 70
+fi
+exec unshare --user --map-root-user --net -- "$RB004_CHROMIUM_REAL_EXECUTABLE" "$@"

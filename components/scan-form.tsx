@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { track } from "@/lib/analytics-client";
 
 export function ScanForm() {
   const [pending, setPending] = useState(false);
@@ -16,6 +17,8 @@ export function ScanForm() {
       const response = await fetch("/api/scans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: data.get("url") }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "This page could not be scanned.");
+      track("scan_started");
+      try { sessionStorage.setItem(`rb004-pending-scan:${result.id}`, "1"); } catch { /* Analytics are optional. */ }
       router.push(`/r/${encodeURIComponent(result.id)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "This page could not be scanned. Please try again.");

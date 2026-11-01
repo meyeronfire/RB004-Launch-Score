@@ -3,6 +3,7 @@ import "@fontsource-variable/geist-mono";
 import "./globals.css";
 import type { Metadata } from "next";
 import { PRODUCT_NAME, RELEASE_CODE, SITE_URL } from "@/config/release";
+import { PlausibleScript } from "@/components/plausible";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -13,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  return <html lang="en"><body>{children}<PlausibleScript /></body></html>;
 }

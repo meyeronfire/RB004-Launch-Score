@@ -7,3 +7,6 @@ coverage/
 data/
 playwright-report/
 test-results/
+artifacts/
+tsconfig.tsbuildinfo
+.impeccable/review/
