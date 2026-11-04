@@ -51,7 +51,7 @@ button, input { font: inherit; }
 .hero-sub { max-width: 48ch; color: var(--ink-soft); font-size: clamp(17px, 1.45vw, 20px); margin: 34px 0 0; line-height: 1.5; }
 .scan-form { display: flex; align-items: stretch; gap: 24px; max-width: 840px; margin-top: 42px; border-bottom: 1px solid var(--ink-soft); transition: border-color .2s ease; }
 .scan-honeypot { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
-.scan-form--access #scan-url { display: none; }
+.scan-form--waitlist #scan-url { display: none; }
 .scan-form--access .free-email-input { min-width: 180px; }
 .free-scan-remaining, .free-access-copy, .free-access-notice { margin-top: 10px; }
 .admin-page { min-height: 100vh; }

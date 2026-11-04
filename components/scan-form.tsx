@@ -46,7 +46,7 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     }
   }
   return <>
-    <form className={`scan-form${needsEmail || waitlistMode ? " scan-form--access" : ""}`} onSubmit={submit}>
+    <form className={`scan-form${needsEmail ? " scan-form--access" : ""}${waitlistMode ? " scan-form--waitlist" : ""}`} onSubmit={submit}>
     <label className="sr-only" htmlFor="scan-url">Page URL</label>
     <input id="scan-url" name="url" type="text" inputMode="url" autoComplete="url" placeholder="Paste your page URL" defaultValue={initialUrl} required={!(needsEmail || waitlistMode)} aria-describedby="scan-error" />
     {!(needsEmail || waitlistMode) && <input className="scan-honeypot" name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" />}
