@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { RELEASE_CODE, PRODUCT_NAME, PRICE_FIX_PROMPT_USD } from "@/config/release";
+import { RELEASE_CODE, PRODUCT_NAME, PRODUCT_TAGLINE, PRICE_FIX_PROMPT_USD } from "@/config/release";
 import { ScanForm } from "@/components/scan-form";
 import { exampleReport } from "@/lib/example";
 import { HeroReportPreview } from "@/components/hero-report-preview";
 import { PricingActions } from "@/components/landing-actions";
 import { GlassCard } from "@/components/glass-card";
+
+import { ChromeRibbon } from "@/components/chrome-ribbon";
 
 const checks = [
   ["Clarity", "Can a stranger understand what you offer, who it is for, and why it matters?"],
@@ -21,13 +23,14 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const exampleUpdated = exampleReport.scoringVersion === 2 && Object.keys(exampleReport.categoryScores ?? {}).length === 6;
   return <main>
     <header className="wrap masthead">
-      <Link className="brand" href="https://regularbasis.studio"><span className="brand-mark">{RELEASE_CODE}</span><span>{PRODUCT_NAME}</span></Link>
+      <Link className="brand" href="https://regularbasis.studio"><span className="brand-mark">{RELEASE_CODE}</span><span className="brand-name">{PRODUCT_NAME}</span><span className="brand-sub">{PRODUCT_TAGLINE}</span></Link>
       <span className="mast-meta">A REGULAR BASIS RELEASE · BERLIN</span>
     </header>
     <section className="wrap hero" aria-labelledby="hero-title">
+      <ChromeRibbon />
       <div className="hero-content">
         <h1 id="hero-title">Will Your Launch Page Convert a <em>Stranger?</em></h1>
-        <p className="hero-sub">Everything Lighthouse checks — plus whether your page actually convinces.</p>
+        <p className="hero-sub">The launch score for vibe-coded apps.</p>
         <ScanForm initialUrl={rescanUrl} />
         <p className="microcopy">FREE · ABOUT 60 SECONDS · NO SIGNUP</p>
       </div>
