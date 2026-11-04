@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const canUseCache = Boolean(cached);
     if (!canUseCache && process.env.NODE_ENV === "production" && !(await hasLiveWorker())) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
     const scan = cached ?? await createScan(target.toString(), { paid: Boolean(paidAccess) || ownerBypass, paidRescanExpiresAt: paidAccess?.expires_at.toISOString(), freeAdmission: ownerBypass || paidAccess ? undefined : { device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined } });
-    const status = paidAccess ? undefined : await freeStatus({ device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined });
+    const status = ownerBypass || paidAccess ? undefined : await freeStatus({ device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined });
     const response = Response.json({ id: scan.id, status: scan.status, remaining: status?.remaining ?? null, cached: canUseCache }, { status: 202, headers: { "Cache-Control": "no-store" } });
     if (deviceCookie) response.headers.append("Set-Cookie", deviceCookie);
     if (paidAccess && rescanToken) response.headers.append("Set-Cookie", `${ACCESS_COOKIE}${scan.id}=${encodeURIComponent(rescanToken)}; Path=/api/scans/${scan.id}/paid; HttpOnly; SameSite=Lax; Max-Age=604800${secure}`);
