@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import type { Finding, LighthouseStrategy, LighthouseReport, MetricCheck } from "@/lib/types";
 import { GlassCard } from "@/components/glass-card";
+import { PRICE_FIX_PROMPT_USD } from "@/config/release";
 
 type SectionCount = { total: number; critical: number; high: number; medium: number; low: number };
 type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; sharePreview?: { title: string; description: string }; findingCounts?: Record<string, SectionCount>; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; checkoutAvailable?: boolean; findings?: Finding[]; designReview?: { state: "checked" | "unknown"; dimensions?: Record<string, number>; score?: number } };
@@ -81,7 +82,7 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
             {hasPaid ? <><p><strong>Evidence:</strong> {full?.evidence}</p><p><strong>Fix:</strong> {full?.fix}</p></> : <div className="locked-detail"><p><strong>Evidence:</strong> {"Evidence and observed page details are included in the full report."}</p><p><strong>Fix:</strong> {"Recommended steps are included in the full report."}</p></div>}
           </GlassCard>;
         })}
-        {allFindings.length > 0 && !hasPaid && scan.checkoutAvailable && <><button className="inline-unlock" type="button" onClick={() => onUnlock(key)} disabled={checkoutPending}>{checkoutPending && checkoutSection === key ? "Opening checkout…" : "Unlock — $12"}</button>{checkoutMessage && checkoutSection === key && <p className="inline-status" role="status">{checkoutMessage}</p>}</>}
+        {allFindings.length > 0 && !hasPaid && scan.checkoutAvailable && <><button className="inline-unlock" type="button" onClick={() => onUnlock(key)} disabled={checkoutPending}>{checkoutPending && checkoutSection === key ? "Opening checkout…" : `Unlock full report — $${PRICE_FIX_PROMPT_USD}`}</button>{checkoutMessage && checkoutSection === key && <p className="inline-status" role="status">{checkoutMessage}</p>}</>}
       </section>;
     })}
 

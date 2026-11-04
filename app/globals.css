@@ -155,6 +155,13 @@ button, input { font: inherit; }
 .finding p { max-width: 66ch; margin: 0; color: var(--ink-soft); }
 .locked-findings { margin-top: 28px; padding-top: 16px; max-width: 850px; }
 .locked-findings > .mono { color: var(--ink-faint); font-size: 10px; letter-spacing: .04em; }
+.report-unlock-offer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 28px; padding-block: 28px; border-block: 1px solid rgba(255,255,255,.08); }
+.report-unlock-offer p { max-width: 68ch; margin: 8px 0 0; color: var(--ink-soft); font-size: 14px; }
+.report-unlock-offer .report-unlock-label { color: var(--accent); font-size: 10px; letter-spacing: .04em; }
+.report-unlock-offer .report-unlock-note { color: var(--ink-faint); font-size: 10px; }
+.report-unlock-action { min-width: min(100%, 230px); }
+.report-unlock-action .inline-unlock { margin: 0; }
+.report-unlock-action .inline-status { max-width: 230px; }
 .locked-title { color: var(--ink-faint); filter: blur(4px); user-select: none; margin: 16px 0; }
 .primary-action { display: block; min-height: 50px; padding: 0 20px; margin-top: 28px; color: #000; background: var(--accent); border: 0; font-weight: 650; font-size: 14px; cursor: pointer; transition: background .2s ease; }
 .primary-action:hover { background: var(--accent-strong); }
@@ -422,6 +429,9 @@ button, input { font: inherit; }
 .share-row { margin-top: -56px; padding-bottom: 40px; }
 
 @media (max-width: 760px) {
+  .report-unlock-offer { grid-template-columns: 1fr; align-items: start; gap: 18px; }
+  .report-unlock-action { width: 100%; }
+  .report-unlock-action .inline-unlock { width: 100%; white-space: normal; }
   .design-dimensions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .report-aside { align-items: flex-start; margin-top: 18px; }
   .report-aside .mono { text-align: left; }

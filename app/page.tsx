@@ -45,10 +45,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         </GlassCard>
     </section>
     <section className="wrap editorial" aria-labelledby="pricing-title">
-      <div className="section-head"><h2 id="pricing-title">Start Free. Go Deeper When It Helps.</h2><p>One URL at a time. No account needed for a score.</p></div>
+      <div className="section-head"><h2 id="pricing-title">Start Free. Go Deeper When It Helps.</h2><p>Your score and top three fixes are free. Unlock the full report and Fix Prompt for one payment per URL.</p></div>
       <div className="pricing">
-        <GlassCard as="article" className="price-item" shellClassName="pricing-glass-shell"><h3>Free Report</h3><p className="price">$0 · NO SIGNUP</p><p>Get your overall score, six category scores, and the three issues with the biggest impact.</p><ul><li>Desktop and mobile review</li><li>Shareable score card</li><li>Evidence-backed findings</li></ul><PricingActions kind="free" /></GlassCard>
-        <GlassCard as="article" className="price-item" accent shellClassName="pricing-glass-shell pricing-glass-shell--accent"><h3>Fix Prompt</h3><p className="price">${PRICE_FIX_PROMPT_USD} · ONE-TIME</p><p className="price-once mono">Pay once per URL. No subscription.</p><p>Get the full ranked report and a copy-ready prompt shaped around your page and tools.</p><ul><li>All findings, ranked by impact</li><li>Three headline options and page copy</li><li>Unlimited re-scans of that URL for seven days</li><li>Separate prompts for Cursor, Claude Code, Lovable, Bolt, v0, and Codex</li></ul><PricingActions kind="paid" /></GlassCard>
+        <GlassCard as="article" className="price-item" shellClassName="pricing-glass-shell"><h3>Free Report</h3><p className="price">$0 · FIRST SCAN, NO SIGNUP</p><p>Get your overall score, six category scores, and the three issues with the biggest impact.</p><ul><li>Desktop and mobile review</li><li>Shareable score card</li><li>Evidence-backed findings</li></ul><PricingActions kind="free" /></GlassCard>
+        <GlassCard as="article" className="price-item" accent shellClassName="pricing-glass-shell pricing-glass-shell--accent"><h3>Full Report + Fix Prompt</h3><p className="price">${PRICE_FIX_PROMPT_USD} · ONE-TIME</p><p className="price-once mono">Pay once per URL. No subscription.</p><p>Unlock every finding, its evidence and fix, plus a copy-ready prompt shaped around your page and tools.</p><ul><li>All findings, ranked by impact</li><li>Three headline options and page copy</li><li>Unlimited re-scans of that URL for seven days</li><li>Separate prompts for Cursor, Claude Code, Lovable, Bolt, v0, and Codex</li></ul><PricingActions kind="paid" /></GlassCard>
       </div>
     </section>
     <section className="wrap editorial" aria-labelledby="faq-title">
@@ -57,10 +57,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         <div className="faq-list">
           <details className="faq-item" open><summary>Why not just ask ChatGPT?</summary><p>{PRODUCT_NAME} renders the live page, measures what it can, and checks the experience on desktop and mobile. The fix prompt uses evidence and stack hints from that page.</p></details>
           <details className="faq-item"><summary>What does the score mean?</summary><p>It combines clarity, conversion, design, trust, technical, and security checks. Every score is based on findings we could verify; unavailable checks stay unknown.</p></details>
-          <details className="faq-item"><summary>Do I need an account?</summary><p>No account is needed for a free scan. The full Fix Prompt is a one-time purchase for the URL you scanned.</p></details>
+          <details className="faq-item"><summary>Do I need an account?</summary><p>You get one free scan without an account. An email link can unlock up to two more free scans. Unlocking the full report and Fix Prompt is a separate one-time purchase for the URL you scanned.</p></details>
           <details className="faq-item"><summary>Can every page be checked?</summary><p>The page must be publicly accessible. Private, sign-in protected, or blocked pages cannot be scanned.</p></details>
-          <details className="faq-item"><summary>What do I get for $12?</summary><p>The full ranked findings, suggested page copy, headline options, and a copy-ready fix prompt for the tool you use.</p></details>
-          <details className="faq-item"><summary>Can I re-scan after fixing?</summary><p>A re-check is coming soon. There is no date to promise yet.</p></details>
+          <details className="faq-item"><summary>What do I get for ${PRICE_FIX_PROMPT_USD}?</summary><p>The full ranked report with evidence and fixes, headline and page-copy options, and a copy-ready prompt for your tool. One payment also includes unlimited re-scans of that URL for seven days.</p></details>
+          <details className="faq-item"><summary>Can I re-scan after fixing?</summary><p>Yes. The one-time purchase includes unlimited re-scans of the same URL for seven days.</p></details>
         </div>
       </div>
     </section>
