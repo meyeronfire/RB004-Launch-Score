@@ -31,9 +31,16 @@ const categoryChecks: Record<Category, string[]> = {
 const checkNames: Record<string, string> = { title: "Page title", description: "Meta description", h1Count: "Single H1", headingOrder: "Heading order", primaryCtaTargets: "Primary action destination", mobileOverflow: "Mobile fit", formCount: "Forms inspected", designContrastFailures: "Text contrast", proofSignals: "Proof signal", pricing: "Pricing information", faq: "FAQ", contact: "Contact path", ogTitle: "Share title", ogDescription: "Share description", twitterCard: "X card metadata", status: "Page response", redirects: "Redirect chain", sitemap: "Sitemap", imageAltCoverage: "Image descriptions", pageSpeedMobile: "Mobile Lighthouse performance", pageSpeedDesktop: "Desktop Lighthouse performance", lighthouseMobileAccessibility: "Mobile accessibility", lighthouseDesktopAccessibility: "Desktop accessibility", lighthouseMobileBestPractices: "Mobile best practices", lighthouseDesktopBestPractices: "Desktop best practices", lighthouseMobileSeo: "Mobile Lighthouse SEO", lighthouseDesktopSeo: "Desktop Lighthouse SEO", consoleErrors: "Browser errors", https: "HTTPS", tlsCertificate: "TLS certificate", httpToHttps: "HTTPS redirect", contentSecurityPolicy: "CSP", strictTransportSecurity: "HSTS", frameProtection: "Frame protection", contentTypeOptions: "Content type protection", referrerPolicy: "Referrer policy", permissionsPolicy: "Permissions policy", exposedFiles: "Exposed files", frontendSecrets: "Frontend secrets", mixedContent: "Mixed content", cookieIssues: "Cookie attributes", corsWildcardRoutes: "CORS policy" };
 
 function CategoryRing({ category, score }: { category: Category; score?: number }) {
-  const radius = 20; const circumference = 2 * Math.PI * radius; const value = typeof score === "number" ? score : undefined;
+  const radius = 26; const circumference = 2 * Math.PI * radius; const value = typeof score === "number" ? score : undefined;
+  const dash = circumference * (1 - (value ?? 0) / 100);
+  const angle = -Math.PI / 2; const dotX = 32 + radius * Math.cos(angle); const dotY = 32 + radius * Math.sin(angle);
   return <div className="category-ring" aria-label={`${labels[category]}: ${value === undefined ? "not available" : `${value} out of 100`}`}>
-    <svg viewBox="0 0 48 48" aria-hidden="true"><circle className="category-ring-track" cx="24" cy="24" r={radius}/><circle className="category-ring-value" cx="24" cy="24" r={radius} strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={circumference * (1 - (value ?? 0) / 100)}/></svg>
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <defs><linearGradient id="category-ring-ink" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#ff2e7e"/><stop offset="100%" stopColor="#ff8fb4"/></linearGradient></defs>
+      <circle className="category-ring-track" cx="32" cy="32" r={radius}/>
+      <circle className={`category-ring-value${value === undefined ? " dim" : ""}`} cx="32" cy="32" r={radius} strokeDasharray={`${circumference - dash} ${circumference}`} strokeDashoffset={0}/>
+      {value !== undefined && value > 0 && <circle className="category-ring-dot" cx={dotX} cy={dotY} r="2.4"/>}
+    </svg>
     <span className="mono">{value ?? "n/a"}</span><span className="category-ring-label">{labels[category]}</span>
   </div>;
 }

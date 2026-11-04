@@ -7,7 +7,7 @@ import { GlassCard } from "@/components/glass-card";
 import { PRICE_FIX_PROMPT_USD } from "@/config/release";
 
 type SectionCount = { total: number; critical: number; high: number; medium: number; low: number };
-type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; sharePreview?: { title: string; description: string }; findingCounts?: Record<string, SectionCount>; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; checkoutAvailable?: boolean; findings?: Finding[]; designReview?: { state: "checked" | "unknown"; dimensions?: Record<string, number>; score?: number } };
+type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; sharePreview?: { title: string; description: string }; findingCounts?: Record<string, SectionCount>; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; checkoutAvailable?: boolean; findings?: Finding[]; designReview?: { state: "checked" | "unknown"; dimensions?: Record<string, number>; score?: number }; categoryScores?: Record<string, number | undefined> };
 const strategies = [["performance", "Performance"], ["accessibility", "Accessibility"], ["bestPractices", "Best Practices"], ["seo", "SEO"]] as const;
 const sections = [["design", "Design & Brand"], ["security", "Security"], ["seo", "SEO"], ["leftovers", "Vibe-coded leftovers"], ["forms", "Forms & CTA"], ["technical", "Technical"], ["other", "Additional findings"]] as const;
 const displayCheck = (value?: { state?: string; value?: number | string }) => value?.state === "checked" && value.value !== undefined ? value.value : "Unavailable";
@@ -35,6 +35,17 @@ const passValue = (key: string, check?: MetricCheck) => {
   if (["title", "description", "canonical", "metaRobots", "ogTitle", "ogDescription", "twitterCard"].includes(key)) return Boolean(check.value) && !["Missing", "Not detected"].includes(String(check.value));
   return typeof check.value === "string" && /present|secure|in order|redirects to https/i.test(check.value);
 };
+
+const sectionCategory: Record<string, string> = { design: "design_brand", security: "security", seo: "technical", leftovers: "technical", forms: "conversion", technical: "technical" };
+const categoryCheckKeys: Record<string, string[]> = {
+  clarity: ["title", "description", "h1Count", "headingOrder"],
+  conversion: ["primaryCtaTargets", "mobileOverflow", "formCount"],
+  design_brand: ["designContrastFailures"],
+  trust: ["proofSignals", "pricing", "faq", "contact", "ogTitle", "ogDescription", "twitterCard"],
+  technical: ["status", "redirects", "sitemap", "imageAltCoverage", "pageSpeedMobile", "pageSpeedDesktop", "lighthouseMobileAccessibility", "lighthouseDesktopAccessibility", "lighthouseMobileBestPractices", "lighthouseDesktopBestPractices", "lighthouseMobileSeo", "lighthouseDesktopSeo", "consoleErrors"],
+  security: ["https", "tlsCertificate", "httpToHttps", "contentSecurityPolicy", "strictTransportSecurity", "frameProtection", "contentTypeOptions", "referrerPolicy", "permissionsPolicy", "exposedFiles", "frontendSecrets", "mixedContent", "cookieIssues", "corsWildcardRoutes"],
+};
+const unknownCheckNames: Record<string, string> = { pageSpeedMobile: "mobile Lighthouse performance", pageSpeedDesktop: "desktop Lighthouse performance", lighthouseMobileAccessibility: "mobile accessibility", lighthouseDesktopAccessibility: "desktop accessibility", lighthouseMobileBestPractices: "mobile best practices", lighthouseDesktopBestPractices: "desktop best practices", lighthouseMobileSeo: "mobile Lighthouse SEO", lighthouseDesktopSeo: "desktop Lighthouse SEO", designContrastFailures: "text contrast review", primaryCtaTargets: "primary action destinations", mobileOverflow: "mobile fit", title: "page title", description: "meta description", h1Count: "heading structure", headingOrder: "heading order", proofSignals: "proof signals", pricing: "pricing information", faq: "FAQ", contact: "contact path", ogTitle: "share title", ogDescription: "share description", twitterCard: "X card metadata", status: "page response", redirects: "redirect chain", sitemap: "sitemap.xml", imageAltCoverage: "image descriptions", consoleErrors: "browser errors", https: "HTTPS", tlsCertificate: "TLS certificate", httpToHttps: "HTTPS redirect", contentSecurityPolicy: "CSP", strictTransportSecurity: "HSTS", frameProtection: "frame protection", contentTypeOptions: "content type protection", referrerPolicy: "referrer policy", permissionsPolicy: "permissions policy", exposedFiles: "exposed files", frontendSecrets: "frontend secrets", mixedContent: "mixed content", cookieIssues: "cookie attributes", corsWildcardRoutes: "CORS policy", formCount: "forms" };
 
 export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse, onUnlock, checkoutPending, checkoutMessage, checkoutSection }: { scan: ReportView; paidFindings?: Finding[]; onRetryLighthouse: () => Promise<boolean>; onUnlock: (section: string) => void; checkoutPending: boolean; checkoutMessage: string; checkoutSection: string }) {
   const [strategy, setStrategy] = useState<"mobile" | "desktop">("mobile");
@@ -68,8 +79,13 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
       const hasDesignMetrics = key === "design" && Boolean(scan.checks?.designFontFamilies || scan.checks?.designDistinctColors || scan.checks?.designContrastFailures);
       if (!allFindings.length && !passed.length && !hasDesignMetrics) return null;
       const counts = scan.findingCounts?.[key];
+      const category = sectionCategory[key];
+      const unknownChecks = category ? (categoryCheckKeys[category] ?? []).filter((name) => { const check = scan.checks?.[name]; return !check || check.state !== "checked"; }).map((name) => unknownCheckNames[name] ?? name) : [];
+      const categoryScore = category ? scan.categoryScores?.[category] : undefined;
+      const scoreCapped = !allFindings.length && unknownChecks.length > 0 && typeof categoryScore === "number" && categoryScore < 100;
       return <section className="wrap depth-section" aria-labelledby={`${key}-title`} key={key}>
         <div className="report-section-title"><h2 id={`${key}-title`}>{title}.</h2><span className="mono">{counts?.total ? countLabel(counts).toUpperCase() : "PASSED CHECKS"}</span></div>
+        {scoreCapped && <p className="coverage-note section-coverage">No issues found here — the score sits at {categoryScore} because {unknownChecks.length === 1 ? "one check could" : `${unknownChecks.length} checks could`} not be confirmed: {unknownChecks.join(", ")}. Unconfirmed checks don&apos;t earn points.</p>}
         {key === "design" && scan.designReview?.state === "checked" && scan.designReview.dimensions && <div className="design-dimensions">{[["Hierarchy", "visualHierarchy"], ["Type", "typography"], ["Spacing", "spacingRhythm"], ["Palette", "paletteContrast"], ["Brand", "brandConsistency"], ["Generic signals", "genericSignals"]].map(([label, dimension]) => <div key={dimension}><span className="mono">{label}</span><strong className="mono">{scan.designReview?.dimensions?.[dimension] ?? "—"}</strong></div>)}</div>}
         {key === "design" && <div className="design-dimensions"><div><span className="mono">Font families</span><strong className="mono">{displayCheck(scan.checks?.designFontFamilies)}</strong></div><div><span className="mono">Distinct colors</span><strong className="mono">{displayCheck(scan.checks?.designDistinctColors)}</strong></div><div><span className="mono">WCAG failures</span><strong className="mono">{displayCheck(scan.checks?.designContrastFailures)}</strong></div></div>}
         {passed.length > 0 && <details className="category-passed-group section-passed-group"><summary className="mono">{passed.length} checks passed</summary><ul className="passed-checks">{passed.map((label) => <li className="mono" key={label}><span aria-hidden="true">✓</span>{label}</li>)}</ul></details>}
