@@ -319,6 +319,13 @@ button, input { font: inherit; }
   .preview-categories { margin-top: 23px; }
   .preview-row { min-height: 29px; }
   .chrome-ribbon { opacity: .32; height: 52%; }
+  .masthead { gap: 12px; }
+  .brand { flex-wrap: nowrap; }
+  .brand-sub { display: none; }
+  .mast-meta { font-size: 9px; }
+  .scan-form { flex-wrap: wrap; row-gap: 10px; gap: 16px; }
+  .scan-form--access #scan-url { flex: 1 1 100%; }
+  .scan-form button:not(.free-email-button) { flex: 1 1 100%; min-height: 52px; }
   .editorial { padding-block: var(--section-y); }
   .section-head { margin-bottom: 34px; }
   .section-head p { margin-top: 16px; }
