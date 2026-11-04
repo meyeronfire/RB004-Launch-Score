@@ -45,6 +45,7 @@ button, input { font: inherit; }
 .brand { display: inline-flex; min-height: 44px; align-items: baseline; gap: 14px; text-decoration: none; font-size: 15px; letter-spacing: -.02em; }
 .brand-mark { color: var(--accent); font-family: var(--mono); font-size: 12px; }
 .brand-name { font-weight: 640; letter-spacing: .02em; font-size: 17px; }
+.brand-logo { height: 20px; width: auto; display: block; }
 .brand-sub { color: var(--ink-faint); font-size: 12px; letter-spacing: .02em; }
 .mast-meta { color: var(--ink-faint); font: 11px var(--mono); letter-spacing: .04em; }
 .hero { position: relative; min-height: min(790px, calc(100svh - 76px)); display: grid; grid-template-columns: repeat(12, 1fr); align-items: center; padding-block: clamp(72px, 10vw, 148px); overflow: clip; }

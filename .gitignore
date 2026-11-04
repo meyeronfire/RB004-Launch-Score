@@ -10,3 +10,4 @@ test-results/
 artifacts/
 tsconfig.tsbuildinfo
 .impeccable/review/
+.vercel
