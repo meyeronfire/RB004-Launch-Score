@@ -423,10 +423,13 @@ async function processScanCore(id: string, leaseToken?: string) {
     try {
       const counter = { count: 0, bytes: 0, active: 0, waiting: [] as Array<() => void> };
       const desktopContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, ignoreHTTPSErrors: false, serviceWorkers: "block" });
+      // esbuild (tsx) injects __name() into functions passed to page.evaluate; define it in the page context.
+      await desktopContext.addInitScript("window.__name = function(fn, name) { try { Object.defineProperty(fn, \"name\", { value: name, configurable: true }); } catch (e) {} return fn; };");
       await desktopContext.routeWebSocket("**/*", (socket) => socket.close({ code: 1008, reason: "WebSockets are disabled during scanning." }));
       desktop = await pageCapture(desktopContext, finalUrl.toString(), false, counter, requestBudget); await desktopContext.close();
       await phase(id, "Rendering the mobile page…", leaseToken);
       const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, ignoreHTTPSErrors: false, serviceWorkers: "block" });
+      await mobileContext.addInitScript("window.__name = function(fn, name) { try { Object.defineProperty(fn, \"name\", { value: name, configurable: true }); } catch (e) {} return fn; };");
       await mobileContext.routeWebSocket("**/*", (socket) => socket.close({ code: 1008, reason: "WebSockets are disabled during scanning." }));
       mobile = await pageCapture(mobileContext, finalUrl.toString(), true, counter, requestBudget); await mobileContext.close();
     } finally { signal?.removeEventListener("abort", closeBrowser); browserMs += Date.now() - browserStartedAt; await browser.close(); }

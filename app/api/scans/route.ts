@@ -12,9 +12,6 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   if (process.env.NODE_ENV === "production" && !process.env.DATABASE_URL) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
   if (isObviousBot(request.headers.get("user-agent"))) return Response.json({ error: "Automated scan requests are not accepted." }, { status: 403 });
-  const limit = await rateLimit(request);
-  if (limit.misconfigured) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
-  if (!limit.allowed) return Response.json({ error: "That’s five scan requests in the past hour. Please try again later." }, { status: 429, headers: { "Retry-After": "3600" } });
   const body = await readBoundedBody(request, 4096);
   if (body.error === "too_large") return Response.json({ error: "Enter a page URL under 4 KB." }, { status: 413 });
   let payload: unknown; try { payload = JSON.parse(body.body ?? ""); } catch { return Response.json({ error: "Enter a valid page URL." }, { status: 400 }); }
@@ -28,6 +25,13 @@ export async function POST(request: Request) {
   const deviceCookie = existingDevice ? "" : `${DEVICE_COOKIE}=${encodeURIComponent(deviceToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}`;
   try {
     const target = normalizePublicUrl((payload as { url: string }).url);
+    const ownerHosts = (process.env.RB004_OWNER_SCAN_HOSTS ?? "").split(",").map((host) => host.trim().toLowerCase()).filter(Boolean);
+    const ownerBypass = ownerHosts.some((host) => target.hostname === host || target.hostname.endsWith(`.${host}`));
+    if (!ownerBypass) {
+      const limit = await rateLimit(request);
+      if (limit.misconfigured) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
+      if (!limit.allowed) return Response.json({ error: "That’s five scan requests in the past hour. Please try again later." }, { status: 429, headers: { "Retry-After": "3600" } });
+    }
     const cached = await findCachedScan(target.toString());
     const rescanToken = cookieValue(request, PAID_RESCAN_COOKIE);
     const paidAccess = rescanToken ? await verifyPaidRescanToken(rescanToken, undefined, target.toString()) : undefined;
@@ -38,7 +42,7 @@ export async function POST(request: Request) {
     }
     const canUseCache = Boolean(cached);
     if (!canUseCache && process.env.NODE_ENV === "production" && !(await hasLiveWorker())) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
-    const scan = cached ?? await createScan(target.toString(), { paid: Boolean(paidAccess), paidRescanExpiresAt: paidAccess?.expires_at.toISOString(), freeAdmission: paidAccess ? undefined : { device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined } });
+    const scan = cached ?? await createScan(target.toString(), { paid: Boolean(paidAccess) || ownerBypass, paidRescanExpiresAt: paidAccess?.expires_at.toISOString(), freeAdmission: ownerBypass || paidAccess ? undefined : { device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined } });
     const status = paidAccess ? undefined : await freeStatus({ device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined });
     const response = Response.json({ id: scan.id, status: scan.status, remaining: status?.remaining ?? null, cached: canUseCache }, { status: 202, headers: { "Cache-Control": "no-store" } });
     if (deviceCookie) response.headers.append("Set-Cookie", deviceCookie);
