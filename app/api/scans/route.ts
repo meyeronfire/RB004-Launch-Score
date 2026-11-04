@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const deviceCookie = existingDevice ? "" : `${DEVICE_COOKIE}=${encodeURIComponent(deviceToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}`;
   try {
     const target = normalizePublicUrl((payload as { url: string }).url);
-    const ownerHosts = (process.env.RB004_OWNER_SCAN_HOSTS ?? "").split(",").map((host) => host.trim().toLowerCase()).filter(Boolean);
+    const ownerHosts = (process.env.RB004_OWNER_SCAN_HOSTS ?? "").split(/[\s,]+/).map((host) => host.trim().toLowerCase()).filter(Boolean);
     const ownerBypass = ownerHosts.some((host) => target.hostname === host || target.hostname.endsWith(`.${host}`));
     console.log("rb004-owner-check", JSON.stringify({ hosts: ownerHosts, hostname: target.hostname, bypass: ownerBypass }));
     if (!ownerBypass) {
