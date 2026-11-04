@@ -20,13 +20,16 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     if (pending) return;
     setPending(true); setError("");
     const data = new FormData(event.currentTarget);
+    const mode = String(data.get("mode") ?? "scan");
+    const url = String(data.get("url") ?? "").trim();
     try {
-      if (needsEmail || waitlistMode) {
+      if (mode === "email" || (!url && (needsEmail || waitlistMode))) {
+        if (!email.trim()) throw new Error("Enter your email address first.");
         const response = await fetch("/api/free-access", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, purpose: waitlistMode ? "waitlist" : "magic", website: data.get("website") }) });
         const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "That email could not be saved.");
         setNotice(waitlistMode ? "You’re on the waitlist. We’ll email when free scans return." : "Check your inbox for a sign-in link. It expires in one hour."); setPending(false); return;
       }
-      const response = await fetch("/api/scans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: data.get("url"), website: data.get("website") }) });
+      const response = await fetch("/api/scans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, website: data.get("website") }) });
       const result = await response.json();
       if (!response.ok) {
         if (result.code === "email_required") setNeedsEmail(true);
@@ -46,9 +49,14 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     <form className={`scan-form${needsEmail || waitlistMode ? " scan-form--access" : ""}`} onSubmit={submit}>
     <label className="sr-only" htmlFor="scan-url">Page URL</label>
     <input id="scan-url" name="url" type="text" inputMode="url" autoComplete="url" placeholder="Paste your page URL" defaultValue={initialUrl} required={!(needsEmail || waitlistMode)} aria-describedby="scan-error" />
-    {(needsEmail || waitlistMode) && <><label className="sr-only" htmlFor="scan-email">Email address</label><input id="scan-email" className="free-email-input" name="email" type="email" autoComplete="email" placeholder="Your email" value={email} onChange={(event) => setEmail(event.target.value)} required /><input className="scan-honeypot" name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" /></>}
     {!(needsEmail || waitlistMode) && <input className="scan-honeypot" name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" />}
-    <button type="submit" disabled={pending}>{pending ? "Starting…" : waitlistMode ? "Join waitlist" : needsEmail ? "Email me a link" : submitLabel}</button>
+    <button type="submit" name="mode" value="scan" disabled={pending}>{pending ? "Starting…" : waitlistMode ? "Join waitlist" : submitLabel}</button>
+    {(needsEmail && !waitlistMode) && <>
+      <label className="sr-only" htmlFor="scan-email">Email address</label>
+      <input id="scan-email" className="free-email-input" name="email" type="email" autoComplete="email" placeholder="Your email" value={email} onChange={(event) => setEmail(event.target.value)} />
+      <button type="submit" name="mode" value="email" className="free-email-button" disabled={pending}>Email me a link</button>
+      <input className="scan-honeypot" name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+    </>}
     <span id="scan-error" className="sr-only" role="alert">{error}</span>
     {error && <span className="form-error" role="alert">{error}</span>}
     </form>
