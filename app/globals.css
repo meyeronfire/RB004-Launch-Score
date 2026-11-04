@@ -52,7 +52,9 @@ button, input { font: inherit; }
 .scan-form { display: flex; align-items: stretch; gap: 24px; max-width: 840px; margin-top: 42px; border-bottom: 1px solid var(--ink-soft); transition: border-color .2s ease; }
 .scan-honeypot { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
 .scan-form--waitlist #scan-url { display: none; }
-.scan-form--access .free-email-input { min-width: 180px; }
+.scan-form--access { flex-wrap: wrap; }
+.scan-form--access #scan-url { flex: 1 1 480px; }
+.scan-form--access .free-email-input { min-width: 180px; flex: 1 1 220px; }
 .free-scan-remaining, .free-access-copy, .free-access-notice { margin-top: 10px; }
 .admin-page { min-height: 100vh; }
 .admin-login-wrap { max-width: 880px; margin: 12vh auto; }
