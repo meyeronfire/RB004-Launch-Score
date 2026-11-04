@@ -45,13 +45,13 @@ button, input { font: inherit; }
 .brand { display: inline-flex; min-height: 44px; align-items: baseline; gap: 14px; text-decoration: none; font-size: 15px; letter-spacing: -.02em; }
 .brand-mark { color: var(--accent); font-family: var(--mono); font-size: 12px; }
 .brand-name { font-weight: 640; letter-spacing: .02em; font-size: 17px; }
-.brand-logo { height: 20px; width: auto; display: block; }
+.brand-logo { height: 26px; width: auto; display: block; }
 .brand-sub { color: var(--ink-faint); font-size: 12px; letter-spacing: .02em; }
 .mast-meta { color: var(--ink-faint); font: 11px var(--mono); letter-spacing: .04em; }
 .hero { position: relative; min-height: min(790px, calc(100svh - 76px)); display: grid; grid-template-columns: repeat(12, 1fr); align-items: center; padding-block: clamp(72px, 10vw, 148px); overflow: clip; }
-.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.55) 0%, transparent 42%); pointer-events: none; }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.6) 0%, transparent 45%); pointer-events: none; }
 .hero-content, .hero > :not(.chrome-ribbon) { position: relative; z-index: 1; }
-.chrome-ribbon { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right center; pointer-events: none; z-index: 0; }
+.chrome-ribbon { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right top; pointer-events: none; z-index: 0; -webkit-mask-image: radial-gradient(120% 115% at 100% 0%, #000 48%, transparent 76%); mask-image: radial-gradient(120% 115% at 100% 0%, #000 48%, transparent 76%); }
 .hero-content { grid-column: 1 / 11; }
 .hero h1 { margin: 0; max-width: 1080px; font-size: clamp(54px, 8.4vw, 134px); line-height: .92; letter-spacing: -.04em; font-weight: 560; text-wrap: balance; }
 .hero h1 em { color: var(--accent); font-style: normal; }
@@ -222,7 +222,7 @@ button, input { font: inherit; }
 .hero h1 { font-size: clamp(54px, 6.3vw, 104px); }
 .hero-sub { margin-top: 26px; }
 .scan-form { margin-top: 30px; }
-.hero-preview { grid-column: 8 / 13; align-self: center; min-width: 0; padding-top: 4px; }
+.hero-preview { grid-column: 8 / 13; align-self: center; min-width: 0; padding-top: 4px; padding-right: clamp(8px, 1.4vw, 28px); }
 .preview-label { color: var(--accent); font-size: 11px; letter-spacing: .06em; }
 .preview-score { margin-top: 22px; font-size: clamp(110px, 13vw, 188px); line-height: .8; letter-spacing: -.055em; font-weight: 560; font-variant-numeric: tabular-nums; background: var(--chrome); -webkit-background-clip: text; background-clip: text; color: transparent; white-space: nowrap; }
 .preview-score span { color: var(--accent); font: 12px var(--mono); letter-spacing: 0; vertical-align: top; margin: 10px 0 0 8px; display: inline-block; }

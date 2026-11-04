@@ -23,7 +23,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const exampleUpdated = exampleReport.scoringVersion === 2 && Object.keys(exampleReport.categoryScores ?? {}).length === 6;
   return <main>
     <header className="wrap masthead">
-      <Link className="brand" href="https://regularbasis.studio"><span className="brand-mark">{RELEASE_CODE}</span><img className="brand-logo" src="/verdkt-wordmark.png" alt="VERDKT" width={72} height={24} /><span className="brand-sub">{PRODUCT_TAGLINE}</span></Link>
+      <Link className="brand" href="https://regularbasis.studio"><img className="brand-logo" src="/verdkt-wordmark.png" alt="VERDKT" width={96} height={32} /><span className="brand-sub">{PRODUCT_TAGLINE}</span></Link>
       <span className="mast-meta">A REGULAR BASIS RELEASE · BERLIN</span>
     </header>
     <section className="wrap hero" aria-labelledby="hero-title">
