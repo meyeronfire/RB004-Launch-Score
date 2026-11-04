@@ -273,7 +273,7 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
   await context.route("**/*", async (route) => {
     const request = route.request(); const target = request.url();
     if (["data:", "blob:", "about:"].some((prefix) => target.startsWith(prefix))) return route.continue();
-    if (request.method() !== "GET" || requestCounter.count >= 24 || requestCounter.bytes >= 16_000_000 || budget.remaining <= 28) return route.abort("blockedbyclient");
+    if (request.method() !== "GET" || requestCounter.count >= 48 || requestCounter.bytes >= 16_000_000 || budget.remaining <= 6) return route.abort("blockedbyclient");
     requestCounter.count++;
     if (requestCounter.active >= 6) await new Promise<void>((resolve) => requestCounter.waiting.push(resolve));
     requestCounter.active++;
