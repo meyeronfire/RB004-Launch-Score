@@ -1,6 +1,25 @@
 // Shared LLM JSON call supporting OpenAI-compatible chat endpoints and the
 // native Google Gemini generateContent API (required for inline base64 images).
-export async function llmJsonCall(input: { baseUrl: string; apiKey: string; model: string; system: string; userText: string; images?: string[]; temperature: number; timeoutMs: number; signal?: AbortSignal }): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+// Retries transient 429/5xx responses and walks a fallback model list.
+export async function llmJsonCall(input: { baseUrl: string; apiKey: string; model: string; system: string; userText: string; images?: string[]; temperature: number; timeoutMs: number; signal?: AbortSignal; fallbackModels?: string[] }): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+  const models = [input.model, ...(input.fallbackModels ?? [])];
+  let lastError: unknown;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await llmJsonAttempt({ ...input, model });
+      } catch (error) {
+        lastError = error;
+        const status = /HTTP (\d{3})/.exec(String(error))?.[1];
+        if (input.signal?.aborted || error instanceof Error && error.name === "AbortError" || !status || !["429", "500", "502", "503"].includes(status)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 3000 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("LLM call failed");
+}
+
+async function llmJsonAttempt(input: { baseUrl: string; apiKey: string; model: string; system: string; userText: string; images?: string[]; temperature: number; timeoutMs: number; signal?: AbortSignal }): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   const base = input.baseUrl.replace(/\/$/, "");
   const isGemini = /generativelanguage\.googleapis\.com/i.test(base);
   const signal = input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(input.timeoutMs)]) : AbortSignal.timeout(input.timeoutMs);
