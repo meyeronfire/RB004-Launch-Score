@@ -13,6 +13,7 @@ import { ScanForm } from "@/components/scan-form";
 import { CATEGORY_WEIGHTS } from "@/config/scoring";
 import type { Category } from "@/lib/types";
 import { checkOutcome } from "@/lib/audit-counts";
+import { ScrollReveal } from "@/components/scroll-reveal";
 import { promptVariants } from "@/lib/fix-prompts";
 
 type FreeReport = ReturnType<typeof import("@/lib/store").publicScan>;
@@ -196,14 +197,18 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   const findings = scan.findings ?? [];
   const weightLabel = `WEIGHTS · ${categoryOrder.map((key) => CATEGORY_WEIGHTS[key]).join(" / ")}`;
   const currentStep = scanSteps.indexOf(scan.phase);
+  const speedTile = (key: string, label: string, unit: string, goodLimit: number) => { const raw = Number(scan.checks?.[key]?.value ?? NaN); return { label, value: Number.isFinite(raw) ? `${raw} ${unit}` : "n/a", good: Number.isFinite(raw) && raw <= goodLimit }; };
+  const speedTiles = [speedTile("speedLcp", "LCP", "ms", 2500), speedTile("speedFcp", "FCP", "ms", 1800), speedTile("speedCls", "CLS", "", 0.1), speedTile("speedDcl", "DCL", "ms", 1800)];
 
   return <main className="report-page">
+    <ScrollReveal selectors=".depth-section, .categories-section, .findings-section, .capture-section, .category-row, .check-evidence > div, .finding-glass-shell, .speed-insights > div" />
     <header className="wrap masthead"><Link className="brand" href="/"><img className="brand-logo" src="/verdkt-wordmark.png" alt="VERDKT" width={96} height={32} /><span className="brand-sub">Launch Score</span></Link><span className="mast-meta">{scan.domain ?? "PAGE REVIEW"}</span></header>
     {!completed && scan.status !== "failed" && <section className="wrap scan-progress" aria-live="polite"><div className="scan-progress-ring" role="img" aria-label={`Scan step ${currentStep < 0 ? 0 : currentStep + 1} of ${scanSteps.length}`}><svg viewBox="0 0 72 72" aria-hidden="true"><circle className="progress-ring-track" cx="36" cy="36" r="31"/><circle className="progress-ring-value" cx="36" cy="36" r="31" strokeDasharray="195 195" strokeDashoffset={195 * (1 - (currentStep + 1) / scanSteps.length)}/></svg><span className="mono">{currentStep < 0 ? 0 : currentStep + 1}<small>/{scanSteps.length}</small></span></div><h1>{scan.phase}</h1><p>Rendering the live page and checking the details we can verify.</p><ol className="progress-log">{scanSteps.map((phase, index) => <li className={`${index < currentStep ? "done" : ""} ${index === currentStep ? "active" : ""} mono`} key={phase}>{index === currentStep && <span className="live-dot" aria-hidden="true"/>}{phase}</li>)}</ol></section>}
     {scan.status === "failed" && <section className="wrap scan-progress scan-failed"><span className="mono progress-label">SCAN STOPPED</span><h1>This page could not be reviewed.</h1><p>{scan.error ?? "The page could not be reached. Check the URL and try again."}</p><ScanForm initialUrl={scan.url} submitLabel="Retry scan" /><Link className="text-link" href="/">Try a different page →</Link></section>}
     {completed && <>
       <section className="wrap report-hero">
         <div className="report-domain">{scan.domain} <span>·</span> {scan.id === "example" ? "EXAMPLE REPORT · 31 OCT 2026" : "LAUNCH SCORE"}</div>
+        <div className="report-chips">{[scan.status === "complete" ? "completed" : scan.status, `HTTP ${scan.checks?.status?.value ?? "—"}`, `${String(scan.checks?.redirects?.value ?? "0").replace(/^0$/, "0")} redirects`, `${scan.auditCounts?.checksRun ?? 0} checks`].map((chip) => <span className="report-chip" key={chip}>{chip}</span>)}</div>
         <GlassCard className="score-overview" shellClassName="report-score-shell">
           <div className="score-line" role="img" aria-label={`${PRODUCT_NAME}: ${scan.score ?? 0} out of 100`}><span className="score-number" aria-hidden="true">{scoreDisplay(animatedScore ?? scan.score ?? 0)}</span><span className="score-denom" aria-hidden="true">/100</span><span className="score-tick" aria-hidden="true"/></div>
           <p className="coverage-note score-coverage">{partial ? "Some optional checks could not be confirmed." : "Assessment complete."} Unknown checks do not add points.</p>
@@ -214,9 +219,26 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         <div className="score-summary"><h1>{scan.title ? `A first look at ${scan.title}` : "Your launch page, at a glance."}</h1><p>Six angles on whether a new visitor can understand, trust, and act on your page.</p></div>
         <div className="category-rings">{categoryOrder.map((key) => <CategoryRing key={key} category={key} score={scan.categoryScores?.[key]}/>)}</div>
       </section>
-      <section className="wrap categories-section"><div className="report-section-title"><h2>Categories.</h2><span className="mono">{weightLabel}</span></div><div className="score-categories">{categoryOrder.map((key) => <div className="category-row" key={key}><span>{labels[key]}</span><div className="category-track" aria-hidden="true"><i style={{ width: `${scan.categoryScores?.[key] ?? 0}%` }}/></div><span className="mono category-score">{scan.categoryScores?.[key] ?? "n/a"}</span></div>)}</div><div className="category-passed-groups">{categoryOrder.map((category) => { const passed = categoryChecks[category].filter((key) => scan.checks?.[key] && checkOutcome(key, scan.checks[key], findings) === true).map((key) => checkNames[key]); if (!passed.length) return null; return <details className="category-passed-group" key={category}><summary className="mono">{labels[category]} · {passed.length} passed</summary><ul className="passed-checks">{passed.map((name) => <li className="mono" key={name}><span aria-hidden="true">✓</span>{name}</li>)}</ul></details>; })}</div></section>
+      <section className="wrap categories-section"><div className="report-section-title"><h2>Categories.</h2><span className="mono">{weightLabel}</span></div>
+        <div className="speed-insights" aria-label="Rendered speed insights">
+          {speedTiles.map((tile) => <div key={tile.label}><span className="mono">{tile.label}</span><strong className={`mono${tile.good ? " good" : " bad"}`}>{tile.value}</strong></div>)}
+        </div>
+        <div className="score-categories">{categoryOrder.map((key) => <div className="category-row" key={key}><span>{labels[key]}</span><div className="category-track" aria-hidden="true"><i style={{ width: `${scan.categoryScores?.[key] ?? 0}%` }}/></div><span className="mono category-score">{scan.categoryScores?.[key] ?? "n/a"}</span></div>)}</div>
+        {scan.scoreBreakdown && <details className="score-breakdown"><summary className="mono">Why this scored this way</summary>
+          <div className="breakdown-grid">
+            <div>
+              <p className="mono breakdown-label">CATEGORY POINT BREAKDOWN</p>
+              {categoryOrder.map((key) => { const entry = scan.scoreBreakdown?.categories[key]; if (!entry) return null; return <div className="breakdown-row" key={key}><span className="mono">{labels[key]}</span><strong className="mono">{entry.score}/100 · base {entry.base} · ceiling {entry.ceiling} · −{entry.lost} pts / {entry.count} finding{entry.count === 1 ? "" : "s"}</strong></div>; })}
+            </div>
+            <div>
+              <p className="mono breakdown-label">BIGGEST SCORE-LOSING CHECKS</p>
+              {scan.scoreBreakdown.top.map((item) => <div className="breakdown-row" key={item.code ?? item.title}><span className={`mono severity-${item.severity}`}>{item.code} · {item.severity.toUpperCase()}</span><strong className="mono">{item.title.slice(0, 60)} · −{item.penalty} pts</strong></div>)}
+            </div>
+          </div>
+          <p className="coverage-note">Scores are deterministic: each category starts from its assessment (default 100) and loses fixed rule points per finding (critical −22, high −13, medium −7, low −3), capped by confirmed evidence. Unknown checks stay unknown.</p>
+        </details>}<div className="category-passed-groups">{categoryOrder.map((category) => { const passed = categoryChecks[category].filter((key) => scan.checks?.[key] && checkOutcome(key, scan.checks[key], findings) === true).map((key) => checkNames[key]); if (!passed.length) return null; return <details className="category-passed-group" key={category}><summary className="mono">{labels[category]} · {passed.length} passed</summary><ul className="passed-checks">{passed.map((name) => <li className="mono" key={name}><span aria-hidden="true">✓</span>{name}</li>)}</ul></details>; })}</div></section>
       {findings.length > 0 && <section className="wrap findings-section"><div className="report-section-title"><h2>Top fixes.</h2><span className="mono">TOP {Math.min(findings.length, 3)} FREE FINDINGS</span></div>
-        <div className="finding-list">{findings.slice(0, 3).map((item, index) => <GlassCard as="article" id={`finding-${item.id}`} className={`finding severity-card severity-${item.severity}`} shellClassName="finding-glass-shell" key={item.id}><span className="mono finding-index">0{index + 1}</span><div><span className={`mono finding-meta severity-${item.severity}`}>{labels[item.category]} · {item.severity.toUpperCase()} IMPACT</span><h3>{item.title}</h3><p>{item.why_it_matters}</p></div></GlassCard>)}</div>
+        <div className="finding-list">{findings.slice(0, 3).map((item, index) => <GlassCard as="article" id={`finding-${item.id}`} className={`finding severity-card severity-${item.severity}`} shellClassName="finding-glass-shell" key={item.id}><span className="mono finding-index">0{index + 1}</span><div><span className={`mono finding-meta severity-${item.severity}`}>{item.code ? `${item.code} · ` : ""}{labels[item.category]} · {item.severity.toUpperCase()} IMPACT</span><h3>{item.title}</h3><p>{item.why_it_matters}</p></div></GlassCard>)}</div>
         {Boolean(scan.lockedCount) && !paidData && <div className="locked-findings"><p className="mono">{scan.lockedCount} MORE FINDINGS{checkoutAvailable ? ` · FULL REPORT + FIX PROMPT $${PRICE_FIX_PROMPT_USD} ONCE` : ""}</p></div>}
       </section>}
       {scan.id !== "example" && checkoutAvailable && !paidData && <section className="wrap report-unlock-offer" aria-label="Unlock the full report and Fix Prompt">

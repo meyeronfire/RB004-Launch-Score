@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { imageSize } from "image-size";
 import { safeFetch, normalizePublicUrl, SafeFetchError, UnsafeTargetError, currentScanSignal, withScanSignal } from "./ssrf";
-import { makeFinding, rankFindings, scoreFindings } from "./score";
+import { makeFinding, rankFindings, scoreFindings, SEVERITY_PENALTY } from "./score";
 import { findCachedScan, readScan, saveScan, updateScan } from "./store";
-import type { Finding, MetricCheck, ScanRecord } from "./types";
+import type { Category, Finding, MetricCheck, ScanRecord, ScoreBreakdown } from "./types";
+import { CATEGORY_WEIGHTS } from "../config/scoring";
 import { reviewContent } from "./content-review";
 import { reviewDesign } from "./design-review";
 import { auditDesignSignals } from "./design-audit";
@@ -269,7 +270,7 @@ function stackHints(html: string) {
   return tests.filter(([, pattern]) => pattern.test(html)).map(([name]) => name);
 }
 
-async function pageCapture(context: BrowserContext, url: string, mobile: boolean, requestCounter: { count: number; bytes: number; active: number; waiting: Array<() => void> }, budget: ScanRequestBudget) {
+async function pageCapture(context: BrowserContext, url: string, mobile: boolean, requestCounter: { count: number; bytes: number; active: number; waiting: Array<() => void>; buckets: Record<"script" | "style" | "image" | "font" | "other", number>; largest: Array<{ url: string; bytes: number; type: string }> }, budget: ScanRequestBudget) {
   await context.route("**/*", async (route) => {
     const request = route.request(); const target = request.url();
     if (["data:", "blob:", "about:"].some((prefix) => target.startsWith(prefix))) return route.continue();
@@ -283,6 +284,10 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
       if (response.redirects.length) return route.fulfill({ status: 302, headers: { location: response.redirects[0] } });
       if (requestCounter.bytes + response.body.length > 16_000_000) return route.abort("blockedbyclient");
       requestCounter.bytes += response.body.length;
+      const contentType = String(response.headers["content-type"] ?? "").toLowerCase();
+      const kind = /javascript|ecmascript/.test(contentType) ? "script" : /css/.test(contentType) ? "style" : /image\//.test(contentType) ? "image" : /font/.test(contentType) ? "font" : "other";
+      requestCounter.buckets[kind] += response.body.length;
+      requestCounter.largest.push({ url: target, bytes: response.body.length, type: kind });
       const headers: Record<string, string> = {};
       for (const key of ["content-type", "cache-control", "last-modified", "etag"]) { const value = response.headers[key]; if (typeof value === "string") headers[key] = value; }
       return route.fulfill({ status: response.status, headers, body: response.body });
@@ -291,8 +296,9 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
   });
   const page = await context.newPage();
   let consoleErrors = 0;
-  page.on("console", (message) => { if (message.type() === "error") consoleErrors += 1; });
-  page.on("pageerror", () => { consoleErrors += 1; });
+  const consoleMessages: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") { consoleErrors += 1; if (consoleMessages.length < 5) consoleMessages.push(String(message.text()).slice(0, 180)); } });
+  page.on("pageerror", (error) => { consoleErrors += 1; if (consoleMessages.length < 5) consoleMessages.push(`Uncaught: ${String(error).slice(0, 180)}`); });
   try {
     const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: mobile ? 25_000 : 20_000 });
     if (!response || response.status() >= 500) throw new SafeFetchError(`The page returned HTTP ${response?.status() ?? "no response"}.`);
@@ -324,7 +330,18 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
       await page.evaluate(() => window.scrollTo(0, 0));
     }
     const fullPageSize = fullPageBuffer ? imageSize(fullPageBuffer) : undefined;
-    return { responseStatus: response.status(), currentUrl: page.url(), snapshot: await pageSnapshot(page), screenshot: asDataUrl(screenshot), fullPageScreenshot: fullPageBuffer ? asDataUrl(fullPageBuffer) : undefined, fullPageSize: fullPageSize ? { width: fullPageSize.width, height: fullPageSize.height } : undefined, screenshotSegments, consoleErrors };
+    let speed: Record<string, number> = {};
+    try {
+      speed = await page.evaluate(() => {
+        const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+        const paints = performance.getEntriesByType("paint") as Array<PerformanceEntry>;
+        const res = performance.getEntriesByType("resource") as Array<PerformanceResourceTiming>;
+        const thirdParty = new Set(res.map((entry) => { try { return new URL(entry.name).origin; } catch { return ""; } }).filter((entryOrigin) => entryOrigin && entryOrigin !== location.origin));
+        const rb = (window as unknown as { __rbSpeed?: { lcp: number; cls: number } }).__rbSpeed;
+        return { dcl: Math.round(nav?.domContentLoadedEventEnd ?? 0), load: Math.round(nav?.loadEventEnd ?? 0), fcp: Math.round(paints.find((paint) => paint.name === "first-contentful-paint")?.startTime ?? 0), lcp: Math.round(rb?.lcp ?? 0), cls: Math.round((rb?.cls ?? 0) * 1000) / 1000, resources: res.length, scripts: res.filter((entry) => entry.initiatorType === "script").length, thirdPartyOrigins: thirdParty.size, transferKB: Math.round(res.reduce((sum, entry) => sum + (entry.encodedBodySize || 0), 0) / 1024) };
+      });
+    } catch { /* Speed metrics are best-effort. */ }
+    return { responseStatus: response.status(), currentUrl: page.url(), snapshot: await pageSnapshot(page), screenshot: asDataUrl(screenshot), fullPageScreenshot: fullPageBuffer ? asDataUrl(fullPageBuffer) : undefined, fullPageSize: fullPageSize ? { width: fullPageSize.width, height: fullPageSize.height } : undefined, screenshotSegments, consoleErrors, consoleMessages, speed };
   } finally { await page.close(); await context.unrouteAll({ behavior: "ignoreErrors" }); }
 }
 
@@ -398,7 +415,9 @@ async function processScanCore(id: string, leaseToken?: string) {
     if (policy.robots.state === "unknown") throw new SafeFetchError("Could not confirm the page’s robots.txt rules, so the scan stopped safely. Try again later.");
     if (policy.blocked) throw new UnsafeTargetError("This page is disallowed by its robots.txt file.");
     await phase(id, "Rendering the desktop page…", leaseToken);
+    const ttfbStartedAt = Date.now();
     const initial = await safeFetch(target.toString(), { timeoutMs: 10_000, maxBytes: 5_000_000, maxRedirects: 4, beforeRedirect: assertRobotsAllows });
+    const ttfbMs = Date.now() - ttfbStartedAt;
     if ([401, 403, 429].includes(initial.status)) throw new SafeFetchError("This site is blocking automated review.");
     if (initial.status === 404) throw new SafeFetchError("HTTP 404: page not found.");
     if (initial.status < 200 || initial.status >= 400) throw new SafeFetchError(`The page returned HTTP ${initial.status}.`);
@@ -418,13 +437,14 @@ async function processScanCore(id: string, leaseToken?: string) {
     if (signal?.aborted) { await browser.close(); throw new SafeFetchError("The scan exceeded its 90-second time limit."); }
     const closeBrowser = () => { void browser.close().catch(() => undefined); };
     signal?.addEventListener("abort", closeBrowser, { once: true });
+    const counter = { count: 0, bytes: 0, active: 0, waiting: [] as Array<() => void>, buckets: { script: 0, style: 0, image: 0, font: 0, other: 0 }, largest: [] as Array<{ url: string; bytes: number; type: string }> };
     const browserStartedAt = Date.now();
     let desktop; let mobile;
     try {
-      const counter = { count: 0, bytes: 0, active: 0, waiting: [] as Array<() => void> };
       const desktopContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, ignoreHTTPSErrors: false, serviceWorkers: "block" });
       // esbuild (tsx) injects __name() into functions passed to page.evaluate; define it in the page context.
       await desktopContext.addInitScript("window.__name = function(fn, name) { try { Object.defineProperty(fn, \"name\", { value: name, configurable: true }); } catch (e) {} return fn; };");
+      await desktopContext.addInitScript("window.__rbSpeed = { lcp: 0, cls: 0 }; try { new PerformanceObserver(function(l){ for (var i=0;i<l.getEntries().length;i++) window.__rbSpeed.lcp = l.getEntries()[i].startTime; }).observe({ type: 'largest-contentful-paint', buffered: true }); } catch (e) {} try { new PerformanceObserver(function(l){ for (var i=0;i<l.getEntries().length;i++) if (!l.getEntries()[i].hadRecentInput) window.__rbSpeed.cls += l.getEntries()[i].value; }).observe({ type: 'layout-shift', buffered: true }); } catch (e) {}");
       await desktopContext.routeWebSocket("**/*", (socket) => socket.close({ code: 1008, reason: "WebSockets are disabled during scanning." }));
       desktop = await pageCapture(desktopContext, finalUrl.toString(), false, counter, requestBudget); await desktopContext.close();
       await phase(id, "Rendering the mobile page…", leaseToken);
@@ -498,8 +518,9 @@ async function processScanCore(id: string, leaseToken?: string) {
     const seo = seoFindings({ title: snap.title, description: snap.description, h1Count: snap.h1Count, headingOrderProblems: snap.headingOrderProblems,
       canonical: snap.canonical, metaRobots: snap.metaRobots, robotsHeader: String(initial.headers["x-robots-tag"] ?? "").slice(0, 120), hreflang: snap.hreflang.map((item: { lang: string; href: string; valid: boolean }) => ({ ...item, status: linkResult.statusByUrl.get(item.href) })),
       jsonLd: snap.jsonLd, imageCount: snap.imageCount, imageAltCount: snap.imageAltCount, ogTitle: snap.ogTitle, ogDescription: snap.ogDescription, ogImage: snap.ogImage, twitterCard: snap.twitterCard }, sitemap, []);
+    const consoleMessages = [...(desktop.consoleMessages ?? []), ...(mobile.consoleMessages ?? [])];
     const leftovers = leftoverFindings({ text: `${snap.text} ${snap.html}`, title: snap.title, favicon: snap.favicon, imageUrls: snap.imageUrls,
-      placeholderLinks: snap.placeholderLinks, testimonials: snap.testimonialBlocks, consoleErrors: desktop.consoleErrors + mobile.consoleErrors,
+      placeholderLinks: snap.placeholderLinks, testimonials: snap.testimonialBlocks, consoleErrors: desktop.consoleErrors + mobile.consoleErrors, consoleMessages,
       comingSoonCount: (snap.text.match(/coming soon/gi) ?? []).length });
     const formAudit = formFindings({ forms: snap.forms, primaryCtas: snap.primaryCtas.filter((cta: { href: string }) => Boolean(cta.href)), statusByUrl: linkResult.statusByUrl, baseUrl: finalUrl.toString() });
     const designSignals = auditDesignSignals([snap.visualSignals, mobileSnap.visualSignals]);
@@ -522,6 +543,19 @@ async function processScanCore(id: string, leaseToken?: string) {
       securityHeaders: { state: "checked", value: Object.values(security.checks).filter((item) => item.value === "Present").length }, exposedFiles: { state: "checked", value: exposure.exposed.length }, frontendSecrets: { state: "checked", value: secrets.length },
       mixedContent: { state: "checked", value: snap.mixedContent.length }, cookieIssues: { state: "checked", value: cookies.length }, corsWildcardRoutes: { state: "checked", value: corsWildcards.length },
       formCount: { state: "checked", value: snap.forms.length }, primaryCtaTargets: { state: "checked", value: `${linkResult.checked} checked · ${linkResult.unknownCount} unknown` }, consoleErrors: { state: "checked", value: desktop.consoleErrors + mobile.consoleErrors },
+      consoleErrorDetails: (desktop.consoleMessages ?? []).length + (mobile.consoleMessages ?? []).length ? { state: "checked" as const, value: [...(desktop.consoleMessages ?? []), ...(mobile.consoleMessages ?? [])].join(" | ") } : { state: "checked" as const, value: "No console errors observed." },
+      brokenLinkDetails: linkResult.broken.length ? { state: "checked" as const, value: linkResult.broken.slice(0, 6).join(" | ") } : { state: "checked" as const, value: "No broken links among the checked set." },
+      redirectChain: { state: "checked", value: initial.redirects.length ? initial.redirects.join(" → ") : "No redirects" },
+      assetWeights: { state: "checked", value: Object.entries(counter.buckets).map(([kind, bytes]) => `${kind} ${Math.round(bytes / 1024)} KB`).join(" · ") },
+      largestAssets: { state: "checked", value: counter.largest.sort((a, b) => b.bytes - a.bytes).slice(0, 4).map((item) => `${item.url.split("/").pop()?.slice(0, 40) || item.url.slice(0, 40)} ${Math.round(item.bytes / 1024)} KB`).join(" · ") || "No subresources were fetched." },
+      ttfb: { state: "checked", value: `${ttfbMs} ms` },
+      requestCount: { state: "checked", value: counter.count },
+      speedDcl: { state: "checked", value: `${desktop.speed?.dcl ?? 0} ms DOMContentLoaded` },
+      speedLoad: { state: "checked", value: `${desktop.speed?.load ?? 0} ms load complete` },
+      speedFcp: { state: "checked", value: `${desktop.speed?.fcp ?? 0} ms first contentful paint` },
+      speedLcp: { state: "checked", value: `${desktop.speed?.lcp ?? 0} ms largest contentful paint` },
+      speedCls: { state: "checked", value: desktop.speed?.cls ?? 0 },
+      speedResources: { state: "checked", value: `${desktop.speed?.resources ?? 0} requests · ${desktop.speed?.scripts ?? 0} scripts · ${desktop.speed?.thirdPartyOrigins ?? 0} third-party origins · ${desktop.speed?.transferKB ?? 0} KB transfer` },
     };
     const current = await readScan(id); if (!current) return;
     await phase(id, "Preparing the evidence-led report…", leaseToken);
@@ -538,16 +572,30 @@ async function processScanCore(id: string, leaseToken?: string) {
     const allFindings = [...findings, ...designModelResult.findings, ...contentReview.findings.filter((item) => !findings.some((known) => known.id === item.id))];
     const copyDrafts = contentReview.copyDrafts;
     const ranked = rankFindings(allFindings);
+    const sectionCodes: Record<string, string> = { security: "SEC", seo: "SEO", leftovers: "LEFT", forms: "FORM", technical: "TECH", design: "DES", other: "GEN" };
+    const codeCounters: Record<string, number> = {};
+    for (const finding of ranked) { const prefix = sectionCodes[finding.section ?? "other"] ?? "GEN"; codeCounters[prefix] = (codeCounters[prefix] ?? 0) + 1; finding.code = `${prefix}-${String(codeCounters[prefix]).padStart(2, "0")}`; }
     const lighthouseScores = [psi.performance, psi.accessibility, psi.bestPractices, psi.seo, psiDesktop.performance, psiDesktop.accessibility, psiDesktop.bestPractices, psiDesktop.seo].flatMap((item) => item.state === "checked" && typeof item.value === "number" ? [item.value] : []);
     const technicalCoverage = 0.9 + 0.1 * (lighthouseScores.length / 8);
     const securityCoverage = Object.values(security.checks).filter((item) => item.state === "checked").length / Math.max(1, Object.keys(security.checks).length);
     const categoryCoverage = { clarity: contentReview.findings.length ? 1 : 0.6, conversion: contentReview.findings.length ? 1 : 0.85, design_brand: designReview.state === "checked" ? 1 : 0.45, trust: 1, technical: technicalCoverage, security: securityCoverage };
     const scored = scoreFindings(ranked, categoryCoverage, lighthouseScores, designReview.score === undefined ? {} : { design_brand: designReview.score });
+    const categoryBase: Partial<Record<Category, number>> = designReview.score === undefined ? {} : { design_brand: designReview.score };
+    const scoreBreakdown: ScoreBreakdown = {
+      categories: Object.fromEntries((Object.keys(CATEGORY_WEIGHTS) as Category[]).map((category) => {
+        const catFindings = ranked.filter((finding) => finding.category === category);
+        const lost = catFindings.reduce((sum, finding) => sum + SEVERITY_PENALTY[finding.severity], 0);
+        const base = Math.round(categoryBase[category] ?? 100);
+        const ceiling = Math.round(50 + 50 * Math.max(0, Math.min(1, categoryCoverage[category] ?? 0.55)));
+        return [category, { score: scored.categoryScores[category], base, ceiling, lost, count: catFindings.length }];
+      })),
+      top: [...ranked].sort((a, b) => SEVERITY_PENALTY[b.severity] - SEVERITY_PENALTY[a.severity]).slice(0, 5).map((finding) => ({ code: finding.code, severity: finding.severity, penalty: SEVERITY_PENALTY[finding.severity], title: finding.title, category: finding.category })),
+    };
     const hints = stackHints(html);
     const prompts = promptVariants({ url: finalUrl.toString(), title: snap.title, stack: hints, findings: ranked, copyDrafts });
     const paidPayload = { available: copyDrafts.headlines.length === 3, paidModelReady: Boolean(current.paid && copyDrafts.headlines.length === 3), findings: ranked, prompts, copyDrafts, model: scanModel };
     const capture = annotatedCapture(ranked, desktop, mobile);
-    await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), annotatedCapture: capture,
+    await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), annotatedCapture: capture, scoreBreakdown,
       checks: checkResults, categoryCoverage, lighthouse: { mobile: psi, desktop: psiDesktop, source: "via Google PageSpeed Insights" }, sharePreview: { title: snap.ogTitle || snap.title, description: snap.ogDescription || snap.description }, shareImageUrl,
       desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 2, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
       stackHints: hints, contentReview: contentReview.status, paidPayload }, leaseToken);

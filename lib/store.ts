@@ -123,7 +123,7 @@ export function publicScan(scan: ScanRecord) {
     paidRescanAvailable: false,
     checkoutAvailable: Boolean(scan.paidPayload?.available && checkoutConfigured),
     shareImageAvailable: Boolean(scan.shareImageUrl),
-    findings: (scan.findings ?? []).map(({ id, category, section, severity, title, why_it_matters }) => ({ id, category, section: section ?? "other", severity, title, why_it_matters })),
+    findings: (scan.findings ?? []).map(({ id, code, category, section, severity, title, why_it_matters }) => ({ id, code, category, section: section ?? "other", severity, title, why_it_matters })),
     findingCounts,
     categoryCoverage: scan.categoryCoverage,
     lockedCount: Math.max(0, (scan.findings?.length ?? 0) - 3),

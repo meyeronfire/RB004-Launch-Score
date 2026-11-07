@@ -4,6 +4,7 @@ import { CATEGORY_WEIGHTS, LIGHTHOUSE_TECHNICAL_SHARE } from "../config/scoring"
 export { CATEGORY_WEIGHTS };
 if (Object.values(CATEGORY_WEIGHTS).reduce((sum, weight) => sum + weight, 0) !== 100) throw new Error("Category weights must sum to 100.");
 const PENALTY: Record<Severity, number> = { critical: 22, high: 13, medium: 7, low: 3 };
+export const SEVERITY_PENALTY = PENALTY;
 
 export function makeFinding(input: Omit<Finding, "id">): Finding {
   const slug = input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 36);

@@ -7,6 +7,7 @@ import { PricingActions } from "@/components/landing-actions";
 import { GlassCard } from "@/components/glass-card";
 
 import { ChromeRibbon } from "@/components/chrome-ribbon";
+import { ScrollReveal } from "@/components/scroll-reveal";
 
 const checks = [
   ["Clarity", "Can a stranger understand what you offer, who it is for, and why it matters?"],
@@ -22,6 +23,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const rescanUrl = typeof query.url === "string" ? query.url : "";
   const exampleUpdated = exampleReport.scoringVersion === 2 && Object.keys(exampleReport.categoryScores ?? {}).length === 6;
   return <main>
+    <ScrollReveal selectors=".editorial, .check-list li, .price-item, .faq-item, .example-block-link" />
     <header className="wrap masthead">
       <Link className="brand" href="https://regularbasis.studio"><img className="brand-logo" src="/verdkt-wordmark.png" alt="VERDKT" width={96} height={32} /><span className="brand-sub">{PRODUCT_TAGLINE}</span></Link>
       <span className="mast-meta">A REGULAR BASIS RELEASE · BERLIN</span>

@@ -1,7 +1,7 @@
 export type Category = "clarity" | "conversion" | "design_brand" | "trust" | "technical" | "security";
 export type Severity = "critical" | "high" | "medium" | "low";
 export type FindingSection = "security" | "seo" | "leftovers" | "forms" | "technical" | "design" | "other";
-export type Finding = { id: string; category: Category; section?: FindingSection; severity: Severity; title: string; why_it_matters: string; evidence: string; fix: string };
+export type Finding = { id: string; code?: string; category: Category; section?: FindingSection; severity: Severity; title: string; why_it_matters: string; evidence: string; fix: string };
 export type DesignDimensions = { visualHierarchy: number; typography: number; spacingRhythm: number; paletteContrast: number; brandConsistency: number; genericSignals: number };
 export type DesignReview = { state: CheckState; dimensions?: DesignDimensions; score?: number; note?: string };
 export type VisualSample = { device: "Desktop" | "Mobile"; section: string; tag: string; text: string; fontFamily: string; fontSize: number; lineHeight: string; fontWeight: string; color: string; background: string; spacing: string; backgroundImage: string; classes: string; alt: string };
@@ -14,6 +14,7 @@ export type CaptureSegment = { image: string; top: number; width: number; height
 export type FindingMarker = { findingId: string; number: number; desktop?: { x: number; y: number; segmentIndex?: number }; mobile?: { x: number; y: number; segmentIndex?: number } };
 export type AnnotatedCapture = { desktopImage?: string; mobileImage?: string; desktopSize?: { width: number; height: number }; mobileSize?: { width: number; height: number }; desktopSegments?: CaptureSegment[]; mobileSegments?: CaptureSegment[]; markers: FindingMarker[] };
 export type ScanStatus = "queued" | "scanning" | "complete" | "failed";
+export type ScoreBreakdown = { categories: Record<string, { score: number; base: number; ceiling: number; lost: number; count: number }>; top: Array<{ code?: string; severity: Severity; penalty: number; title: string; category: Category }> };
 export type ScanRecord = {
   id: string; url: string; status: ScanStatus; phase: string; createdAt: string; updatedAt: string;
   phaseHistory?: string[];
@@ -25,6 +26,7 @@ export type ScanRecord = {
   lighthouse?: LighthouseReport;
   annotatedCapture?: AnnotatedCapture;
   auditCounts?: { checksRun: number; passed: number; issues: number };
+  scoreBreakdown?: ScoreBreakdown;
   designReview?: DesignReview;
   scoringVersion?: number;
   sharePreview?: { title: string; description: string };

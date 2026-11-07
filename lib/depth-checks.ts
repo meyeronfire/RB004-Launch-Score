@@ -194,7 +194,7 @@ export function seoFindings(seo: SeoSignals, sitemap: MetricCheck, deadLinks: st
   return findings;
 }
 
-export function leftoverFindings(input: { text: string; title: string; favicon: string; imageUrls: string[]; placeholderLinks: number; testimonials: string[]; consoleErrors: number; comingSoonCount: number }) {
+export function leftoverFindings(input: { text: string; title: string; favicon: string; imageUrls: string[]; placeholderLinks: number; testimonials: string[]; consoleErrors: number; consoleMessages?: string[]; comingSoonCount: number }) {
   const findings: Finding[] = [];
   const textMatches = [...input.text.matchAll(/\b(lorem ipsum|your company|acme(?: inc\.?| corp\.?)?|john doe|example\.com|vite \+ react|create next app|lovable app)\b/gi)].map((match) => match[0]);
   const defaultTitle = /^(?:vite\s*\+\s*react|create next app|lovable app)$/i.test(input.title.trim());
@@ -206,7 +206,7 @@ export function leftoverFindings(input: { text: string; title: string; favicon: 
   if (input.placeholderLinks) findings.push(auditFinding("leftovers", "conversion", "A placeholder link was found", "A link to # does not take the visitor to the promised destination.", `${input.placeholderLinks} link${input.placeholderLinks === 1 ? "" : "s"} use href="#".`, "Connect each link to a working destination or remove it until that destination exists."));
   if (input.comingSoonCount) findings.push(auditFinding("leftovers", "conversion", "A section is marked Coming soon", "A section that advertises an unavailable feature may distract visitors from what they can do today.", `${input.comingSoonCount} “Coming soon” label${input.comingSoonCount === 1 ? "" : "s"} were found in rendered text.`, "Remove unfinished sections or replace them with a clear description of what is available now."));
   if (input.testimonials.length) findings.push(auditFinding("leftovers", "trust", "A testimonial looks like a placeholder", "Unverified placeholder quotes can confuse visitors about what is genuine.", `${input.testimonials.length} testimonial block${input.testimonials.length === 1 ? "" : "s"} matched common sample names or generic template language. This is a pattern match, not a claim about authenticity.`, "Confirm every quote and attribution with its source; remove or replace any sample copy."));
-  if (input.consoleErrors) findings.push(auditFinding("leftovers", "technical", "The page logged browser errors on load", "Runtime errors can stop scripts or interactive elements from working as intended.", `${input.consoleErrors} browser console error${input.consoleErrors === 1 ? "" : "s"} were observed. Error text was not retained.`, "Inspect the browser console, fix the underlying runtime issues, and retest the page without submitting forms."));
+  if (input.consoleErrors) findings.push(auditFinding("leftovers", "technical", "The page logged browser errors on load", "Runtime errors can stop scripts or interactive elements from working as intended.", input.consoleMessages?.length ? `${input.consoleErrors} browser console error${input.consoleErrors === 1 ? "" : "s"} were observed. First messages: ${input.consoleMessages.join(" | ")}` : `${input.consoleErrors} browser console error${input.consoleErrors === 1 ? "" : "s"} were observed. Error text was not retained.`, "Inspect the browser console, fix the underlying runtime issues, and retest the page without submitting forms."));
   return findings;
 }
 
