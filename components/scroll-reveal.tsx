@@ -31,9 +31,12 @@ export function ScrollReveal({ selectors }: { selectors: string }) {
     const onScroll = () => { revealInView(); };
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
+    // Safety net: reveal on a low-frequency interval as well — covers environments
+    // where neither IO delivery nor scroll-event dispatch is reliable.
+    const interval = window.setInterval(revealInView, 300);
     const mutation = new MutationObserver(() => { watch(); revealInView(); });
     mutation.observe(document.body, { childList: true, subtree: true });
-    return () => { observer.disconnect(); mutation.disconnect(); window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); };
+    return () => { observer.disconnect(); mutation.disconnect(); window.clearInterval(interval); window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); };
   }, [selectors]);
   return null;
 }
