@@ -494,12 +494,12 @@ button, input { font: inherit; }
 .lighthouse-metric-retry { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
 .lighthouse-metric-retry > .mono { color: var(--ink-faint); font-size: 10px; }
 .lighthouse-metric-retry .inline-unlock { margin: 0; }
-.share-preview-card { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); max-width: 980px; background: var(--surface); }
-.share-preview-card-no-image { grid-template-columns: minmax(0, 1fr); max-width: 780px; }
-.share-preview-image { min-height: 230px; position: relative; aspect-ratio: 1.9; background: #050505; }
+.share-preview-card { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 720px; background: var(--surface); }
+.share-preview-card-no-image { max-width: 640px; }
+.share-preview-image { position: relative; aspect-ratio: 1.905; background: #050505; }
 .share-preview-image img { object-fit: cover; }
 .share-preview-empty { display: flex; align-items: center; justify-content: center; padding: 24px; color: var(--ink-faint); font-size: 10px; text-align: center; }
-.share-preview-copy { min-width: 0; align-self: center; padding: clamp(22px, 4vw, 42px); }
+.share-preview-copy { min-width: 0; padding: 18px 22px 22px; }
 .share-preview-copy > .mono { color: var(--ink-faint); font-size: 10px; overflow-wrap: anywhere; }
 .share-preview-copy h3 { margin: 13px 0 8px; font-size: clamp(22px, 2.4vw, 30px); line-height: 1.1; letter-spacing: -.03em; font-weight: 520; }
 .share-preview-copy > p:not(.mono) { margin: 0 0 18px; color: var(--ink-soft); font-size: 14px; }
