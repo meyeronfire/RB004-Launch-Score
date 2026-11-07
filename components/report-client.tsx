@@ -13,8 +13,10 @@ import { ScanForm } from "@/components/scan-form";
 import { CATEGORY_WEIGHTS } from "@/config/scoring";
 import type { Category } from "@/lib/types";
 import { checkOutcome } from "@/lib/audit-counts";
+import { getCheckLedger } from "@/lib/report-artifacts";
 import { ScrollReveal } from "@/components/scroll-reveal";
 import { promptVariants } from "@/lib/fix-prompts";
+import { ReportArtifactActions } from "@/components/report-artifact-actions";
 
 type FreeReport = ReturnType<typeof import("@/lib/store").publicScan>;
 const labels: Record<Category, string> = { clarity: "Clarity", conversion: "Conversion", design_brand: "Design & Brand", trust: "Trust", technical: "Technical", security: "Security" };
@@ -180,6 +182,9 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     } catch (error) { setAccessStatus(error instanceof Error ? error.message : "The request could not be completed."); }
   }
   const findings = scan.findings ?? [];
+  const checkLedger = getCheckLedger(scan.checks, findings);
+  const checkCounts = checkLedger.reduce((counts, row) => { counts[row.status] += 1; return counts; }, { pass: 0, issue: 0, unknown: 0, measured: 0 });
+  const reportCounts = { checksRun: checkLedger.length, passed: checkCounts.pass, issues: checkCounts.issue };
   const weightLabel = `WEIGHTS · ${categoryOrder.map((key) => CATEGORY_WEIGHTS[key]).join(" / ")}`;
   const currentStep = scanSteps.indexOf(scan.phase);
   const speedTile = (key: string, label: string, unit: string, goodLimit: number) => { const raw = Number(scan.checks?.[key]?.value ?? NaN); return { label, value: Number.isFinite(raw) ? `${raw} ${unit}` : "n/a", good: Number.isFinite(raw) && raw <= goodLimit }; };
@@ -193,11 +198,11 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     {completed && <>
       <section className="wrap report-hero">
         <div className="report-domain">{scan.domain} <span>·</span> {scan.id === "example" ? "EXAMPLE REPORT · 31 OCT 2026" : "LAUNCH SCORE"}</div>
-        <div className="report-chips">{[scan.status === "complete" ? "completed" : scan.status, `HTTP ${scan.checks?.status?.value ?? "—"}`, `${String(scan.checks?.redirects?.value ?? "0").replace(/^0$/, "0")} redirects`, `${scan.auditCounts?.checksRun ?? 0} checks`].map((chip) => <span className="report-chip" key={chip}>{chip}</span>)}</div>
+        <div className="report-chips">{[scan.status === "complete" ? "completed" : scan.status, `HTTP ${scan.checks?.status?.value ?? "—"}`, `${String(scan.checks?.redirects?.value ?? "0").replace(/^0$/, "0")} redirects`, `${reportCounts.checksRun} checks`].map((chip) => <span className="report-chip" key={chip}>{chip}</span>)}</div>
         <GlassCard className="score-overview" shellClassName="report-score-shell">
           <div className="score-line" role="img" aria-label={`${PRODUCT_NAME}: ${scan.score ?? 0} out of 100`}><span className="score-number" aria-hidden="true">{scoreDisplay(animatedScore ?? scan.score ?? 0)}</span><span className="score-denom" aria-hidden="true">/100</span><span className="score-tick" aria-hidden="true"/></div>
           <p className="coverage-note score-coverage">{partial ? "Some optional checks could not be confirmed." : "Assessment complete."} Unknown checks do not add points.</p>
-          {scan.auditCounts && <p className="audit-counts mono">{scan.auditCounts.checksRun} checks run · {scan.auditCounts.passed} passed · {scan.auditCounts.issues} issues</p>}
+          <p className="audit-counts mono">{reportCounts.checksRun} checks run · {reportCounts.passed} passed · {reportCounts.issues} issues · {checkCounts.unknown} unknown · {checkCounts.measured} measured</p>
           {searchParams.get("checkout") === "complete" && <p className="inline-status" role="status">Your checkout returned to this report. Once the payment is verified, we’ll email a secure purchaser link for the full report.</p>}
           {searchParams.get("checkout") === "cancelled" && <p className="inline-status" role="status">Checkout was cancelled. Your free report is still available here.</p>}
         </GlassCard>
@@ -240,6 +245,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         </div>
       </section>}
       <TechnicalReportSections scan={{ ...scan, checkoutAvailable } as FreeReport & { findingCounts?: Record<string, { total: number; critical: number; high: number; medium: number; low: number }>; shareImageAvailable?: boolean; checkoutAvailable?: boolean; findings?: Finding[] }} paidFindings={paidData?.findings} onRetryLighthouse={retryLighthouse} onUnlock={(section) => void checkout(section)} checkoutPending={checkoutPending} checkoutMessage={checkoutMessage} checkoutSection={checkoutSection}/>
+      <ReportArtifactActions report={scan} paidData={paidData} />
       <div className="wrap share-row"><span className="mono">SHARE YOUR SCORE</span><button type="button" onClick={() => openShare("x")}>X</button><button type="button" onClick={() => openShare("linkedin")}>LinkedIn</button><button type="button" onClick={copyLink}>Copy link</button><span role="status">{shareStatus}</span></div>
       <section className="wrap capture-section" aria-label="Rendered page previews">
         <div className="report-section-title"><h2>Your page, rendered.</h2><span className="mono">DESKTOP 1440 × 900 / MOBILE 390 × 844</span></div>

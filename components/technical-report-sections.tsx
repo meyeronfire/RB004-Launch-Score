@@ -6,6 +6,7 @@ import type { Finding, LighthouseStrategy, LighthouseReport, MetricCheck } from 
 import { GlassCard } from "@/components/glass-card";
 import { PRICE_FIX_PROMPT_USD } from "@/config/release";
 import { SHARE_FORMATS, type ShareFormat, type ShareVariant } from "@/lib/share-card";
+import { getCheckLedger } from "@/lib/report-artifacts";
 
 type SectionCount = { total: number; critical: number; high: number; medium: number; low: number };
 type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; sharePreview?: { title: string; description: string }; findingCounts?: Record<string, SectionCount>; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; checkoutAvailable?: boolean; findings?: Finding[]; designReview?: { state: "checked" | "unknown"; dimensions?: Record<string, number>; score?: number }; categoryScores?: Record<string, number | undefined> };
@@ -64,6 +65,8 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
   const lighthouse = scan.lighthouse?.[strategy];
   const lighthouseUnavailable = !lighthouse || [...Object.values(lighthouse)].every((metric) => metric.state === "unknown");
   const lighthouseHasUnknown = !lighthouse || Object.values(lighthouse).some((metric) => metric.state === "unknown");
+  const checkLedger = getCheckLedger(scan.checks, scan.findings);
+  const ledgerCounts = checkLedger.reduce((counts, row) => ({ ...counts, [row.status]: counts[row.status] + 1 }), { pass: 0, issue: 0, unknown: 0, measured: 0 });
   async function retryLighthouse() { setRetrying(true); setRetryFailed(false); const ok = await onRetryLighthouse(); setRetrying(false); setRetryFailed(!ok); }
 
   return <>
@@ -114,6 +117,18 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
         {allFindings.length > 0 && !hasPaid && scan.checkoutAvailable && <><button className="inline-unlock" type="button" onClick={() => onUnlock(key)} disabled={checkoutPending}>{checkoutPending && checkoutSection === key ? "Opening checkout…" : `Unlock full report — $${PRICE_FIX_PROMPT_USD}`}</button>{checkoutMessage && checkoutSection === key && <p className="inline-status" role="status">{checkoutMessage}</p>}</>}
       </section>;
     })}
+
+    {checkLedger.length > 0 && <section className="wrap depth-section full-check-ledger" aria-labelledby="check-ledger-title">
+      <div className="report-section-title"><h2 id="check-ledger-title">Full check list.</h2><span className="mono">{checkLedger.length} CHECKS · {ledgerCounts.issue} ISSUES · {ledgerCounts.pass} PASSED</span></div>
+      <p className="coverage-note">Measured checks without a pass/fail rule stay neutral. Unknown checks are never counted as passes.</p>
+      <details className="category-passed-group section-passed-group">
+        <summary className="mono">Show all {checkLedger.length} check results · {ledgerCounts.unknown} unknown · {ledgerCounts.measured} measured</summary>
+        <div className="check-evidence">{checkLedger.map((row) => <div className={`check-ledger-row check-ledger-row--${row.status}`} key={row.key}>
+          <span className="check-ledger-label"><span className={`mono check-ledger-status check-ledger-status--${row.status}`}>{row.status === "issue" ? "NEEDS ATTENTION" : row.status.toUpperCase()} · {row.category}</span><span>{row.label}</span></span>
+          <strong className="mono">{row.value ?? row.note ?? (row.status === "unknown" ? "Not confirmed" : "No value returned")}</strong>
+        </div>)}</div>
+      </details>
+    </section>}
 
     <section className="wrap depth-section share-preview-section" aria-labelledby="share-preview-title">
       <div className="report-section-title"><h2 id="share-preview-title">Share your score.</h2><span className="mono">LIVE PREVIEW · PNG EXPORT</span></div>
