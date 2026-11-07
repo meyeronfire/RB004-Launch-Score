@@ -106,7 +106,7 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
           const full = fullFindings.find((finding) => finding.id === summary.id);
           const finding = full ?? summary;
           const anchorId = (scan.findings ?? []).slice(0, 3).some((item) => item.id === finding.id) ? undefined : `finding-${finding.id}`;
-          return <GlassCard as="article" id={anchorId} className={`depth-finding severity-card severity-${finding.severity}`} shellClassName="locked-finding-glass-shell" glow={false} key={summary.id}><span className="mono finding-index">{String(markerNumber).padStart(2, "0")}</span><span className={`mono finding-meta severity-${finding.severity}`}>{finding.code ? `${finding.code} · ` : ""}{finding.severity.toUpperCase()} · {finding.category.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.why_it_matters}</p>
+          return <GlassCard as="article" id={anchorId} className={`depth-finding severity-card severity-${finding.severity}`} shellClassName="locked-finding-glass-shell" glow={false} key={summary.id}><span className="mono finding-index">{finding.code ?? String(markerNumber).padStart(2, "0")}</span><span className={`mono finding-meta severity-${finding.severity}`}>{finding.severity.toUpperCase()} · {finding.category.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.why_it_matters}</p>
             {hasPaid ? <><p><strong>Evidence:</strong> {full?.evidence}</p><p><strong>Fix:</strong> {full?.fix}</p></> : <div className="locked-detail"><p><strong>Evidence:</strong> {finding.evidence}</p><p className="locked-fix"><strong>Fix:</strong> <a href="#unlock">Included in the full report — ${PRICE_FIX_PROMPT_USD}</a></p></div>}
           </GlassCard>;
         })}
