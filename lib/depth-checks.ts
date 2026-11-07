@@ -6,7 +6,7 @@ export type AuditResponse = { status: number; headers: HeaderMap; body: Buffer }
 export type ScriptSource = { url: string; source: string };
 export type ExposureFetcher = (url: string, options: { timeoutMs: number; maxBytes: number; maxRedirects: number }) => Promise<AuditResponse>;
 
-function auditFinding(section: NonNullable<Finding["section"]>, category: Finding["category"], severityOrTitle: Severity | string, titleOrWhy: string, whyOrEvidence: string, evidenceOrFix: string, maybeFix?: string): Finding {
+export function auditFinding(section: NonNullable<Finding["section"]>, category: Finding["category"], severityOrTitle: Severity | string, titleOrWhy: string, whyOrEvidence: string, evidenceOrFix: string, maybeFix?: string): Finding {
   const withSeverity = maybeFix !== undefined;
   return makeFinding({ section, category, severity: withSeverity ? severityOrTitle as Severity : "medium", title: withSeverity ? titleOrWhy : severityOrTitle,
     why_it_matters: withSeverity ? whyOrEvidence : titleOrWhy, evidence: withSeverity ? evidenceOrFix : whyOrEvidence, fix: withSeverity ? maybeFix : evidenceOrFix });

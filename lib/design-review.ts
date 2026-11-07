@@ -6,6 +6,7 @@ import type { DesignDimensions, DesignReview, Finding, VisualSignals } from "./t
 
 const Dimensions = z.object({ visualHierarchy: z.number().int().min(0).max(100), typography: z.number().int().min(0).max(100), spacingRhythm: z.number().int().min(0).max(100), paletteContrast: z.number().int().min(0).max(100), brandConsistency: z.number().int().min(0).max(100), genericSignals: z.number().int().min(0).max(100) });
 const ResponseSchema = z.object({ dimensions: Dimensions, findings: z.array(z.object({ section: z.string().min(1).max(60), severity: z.enum(["critical", "high", "medium", "low"]), title: z.string().min(8).max(100), why_it_matters: z.string().min(12).max(240), visible_evidence: z.string().min(4).max(120), fix: z.string().min(8).max(360) })).max(6) });
+const FindingsSchema = ResponseSchema.shape.findings;
 const average = (dimensions: DesignDimensions) => Math.round(Object.values(dimensions).reduce((sum, value) => sum + value, 0) / 6);
 
 export async function reviewDesign(input: { desktopImage?: string; mobileImage?: string; signals: VisualSignals[] }, modelOverride?: string): Promise<{ review: DesignReview; findings: Finding[]; score?: number; state: "checked" | "unknown"; usage?: { inputTokens: number; outputTokens: number; model: string } }> {
@@ -22,13 +23,16 @@ export async function reviewDesign(input: { desktopImage?: string; mobileImage?:
     const signal = currentScanSignal();
     const { text: raw, inputTokens, outputTokens } = await llmJsonCall({ baseUrl, apiKey, model, userText, images: [input.desktopImage, input.mobileImage], temperature: 0.1, timeoutMs: 40_000, signal: signal ?? undefined, fallbackModels: (process.env.LLM_MODEL_FALLBACKS ?? "").split(",").map((item) => item.trim()).filter(Boolean),
       system: "You are a visual QA reviewer. Use only observable screenshot/CSS evidence. Do not make taste-only judgments or infer external brand facts. All findings require a captured section and exact evidence from provided samples. Return valid JSON only." });
-    const parsed = ResponseSchema.parse(JSON.parse(raw));
-    const safeFindings = parsed.findings.filter((item) => sectionNames.includes(item.section) && evidencePool.includes(item.visible_evidence)).map((item) => {
+    const parsed = JSON.parse(raw) as { dimensions?: unknown; findings?: unknown };
+    const dimsParsed = Dimensions.safeParse(parsed.dimensions ?? {});
+    const findingsParsed = FindingsSchema.safeParse(parsed.findings ?? []);
+    const safeFindings = (findingsParsed.success ? findingsParsed.data : []).filter((item) => sectionNames.includes(item.section) && evidencePool.includes(item.visible_evidence)).map((item) => {
       const genericSlop = /generic|default|template|placeholder|shadcn|tailwind|stock (?:photo|illustration)|emoji icon|lorem|unstyled|gray|grey|outline/i.test(`${item.title} ${item.visible_evidence}`);
       return makeFinding({ category: "design_brand", section: genericSlop ? "leftovers" : "design", severity: item.severity, title: item.title, why_it_matters: item.why_it_matters, evidence: `${item.section} — “${item.visible_evidence}”`, fix: item.fix });
     });
-    const score = average(parsed.dimensions);
-    const review = { state: "checked" as const, dimensions: parsed.dimensions, score };
+    if (!dimsParsed.success) return { review: { state: "unknown", note: "Visual model review returned unusable dimension scores." }, findings: safeFindings, state: "unknown", usage: { inputTokens, outputTokens, model } };
+    const score = average(parsed.dimensions as DesignDimensions);
+    const review = { state: "checked" as const, dimensions: dimsParsed.data, score };
     return { review, findings: safeFindings, score, state: "checked", usage: { inputTokens, outputTokens, model } };
   } catch (error) {
     console.warn("Design & Brand vision review failed:", error instanceof Error ? error.message : "Unknown model error");

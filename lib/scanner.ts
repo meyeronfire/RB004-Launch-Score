@@ -12,7 +12,7 @@ import { auditDesignSignals } from "./design-audit";
 import { promptVariants } from "./fix-prompts";
 import { browserLaunchOptions } from "./browser-isolation";
 import { ScanRequestBudget, withRequestBudget, currentRequestBudget } from "./request-budget";
-import { detectFrontendSecrets, extractSameOriginApiRoutes, formFindings, inspectExposedFiles, leftoverFindings, securityFindings, seoFindings, type ScriptSource } from "./depth-checks";
+import { auditFinding, detectFrontendSecrets, extractSameOriginApiRoutes, formFindings, inspectExposedFiles, leftoverFindings, securityFindings, seoFindings, type ScriptSource } from "./depth-checks";
 import { calculateAuditCounts } from "./audit-counts";
 import { releaseFreeScanReservation, reserveFreeScan, settleScanCost } from "./free-tier";
 
@@ -455,6 +455,39 @@ async function processScanCore(id: string, leaseToken?: string) {
     const primaryTargets = snap.primaryCtas.map((cta: { href: string }) => cta.href).filter(Boolean);
     const auditTargets = [...primaryTargets, ...formActionLinks, ...hreflangLinks, ...sameOriginLinks];
     const linkResult = await checkStatus(auditTargets);
+    // Whole-site mini-audit: deterministic checks on up to 4 same-origin subpages.
+    const wholeSiteFindings: Finding[] = [];
+    let subpagesAudited = 0;
+    {
+      const priorityPattern = /pricing|about|contact|features|how|story|blog|docs|imprint|legal|security|faq/i;
+      const candidates = [...new Set(sameOriginLinks.map((href) => { try { const u = new URL(href, finalUrl); u.hash = ""; u.search = ""; return `${u.origin}${u.pathname}`; } catch { return ""; } }).filter((key) => key && new URL(key).pathname !== pageUrl.pathname && !/\.[a-z0-9]{2,5}$/i.test(new URL(key).pathname)))]
+        .sort((a, b) => Number(priorityPattern.test(b)) - Number(priorityPattern.test(a)))
+        .slice(0, 4);
+      for (const candidate of candidates) {
+        try {
+          const pageUrlObj = new URL(candidate);
+          await assertRobotsAllows(pageUrlObj);
+          const res = await safeFetch(pageUrlObj.toString(), { timeoutMs: 6000, maxBytes: 600_000, maxRedirects: 2, beforeRedirect: assertRobotsAllows, budget: requestBudget });
+          const path = pageUrlObj.pathname;
+          if (res.status >= 400) { wholeSiteFindings.push(auditFinding("technical", "technical", res.status >= 500 ? "high" : "medium", "A linked page returned an HTTP error", "Broken internal pages make the site look unfinished and can cost visitors mid-journey.", `${path} returned HTTP ${res.status}.`, "Fix the page or remove the link that points to it.")); continue; }
+          if (!/text\/html/i.test(String(res.headers["content-type"] ?? ""))) continue;
+          subpagesAudited++;
+          const htmlText = res.body.toString("utf8");
+          const title = /<title[^>]*>([^<]{0,200})<\/title>/i.exec(htmlText)?.[1]?.trim() ?? "";
+          const description = /<meta[^>]+name=["']description["'][^>]*content=["']([^"']{0,300})["']/i.exec(htmlText)?.[1]?.trim() ?? "";
+          const h1Count = (htmlText.match(/<h1[\s>]/gi) ?? []).length;
+          const imgTags = htmlText.match(/<img\b[^>]*>/gi) ?? [];
+          const imgNoAlt = imgTags.filter((tag) => !/\balt\s*=\s*["'][^"'\s][^"']*["']/i.test(tag)).length;
+          const noindex = /<meta[^>]+name=["']robots["'][^>]*content=["'][^"']*noindex/i.test(htmlText);
+          if (noindex) wholeSiteFindings.push(auditFinding("seo", "technical", "A linked subpage is marked noindex", "Internal pages blocked from indexing are invisible to search engines and answer engines.", `${path} carries a noindex robots meta.`, "Remove the noindex directive unless the page is intentionally private."));
+          if (!title || /^(?:vite\s*\+\s*react|create next app|lovable app)$/i.test(title)) wholeSiteFindings.push(auditFinding("seo", "clarity", "A subpage is missing a proper page title", "Page titles are the primary search and browser-tab signal for every page.", `${path} has ${title ? `the template title "${title}"` : "no <title> element"}.`, `Add a unique, descriptive <title> (about 50-60 characters) for ${path}.`));
+          else if (title.length < 12 || title.length > 70) wholeSiteFindings.push(auditFinding("seo", "technical", "A subpage title is outside the usual length range", "Very short or very long titles are truncated or diluted in search results.", `${path} title is ${title.length} characters: "${title.slice(0, 60)}".`, "Rewrite the title to about 50-60 characters with the page's main keyword."));
+          if (!description) wholeSiteFindings.push(auditFinding("seo", "clarity", "A subpage is missing its meta description", "Meta descriptions are the default snippet in search results and social shares.", `${path} has no meta description.`, `Add a meta description (about 140-160 characters) summarizing ${path}.`));
+          if (h1Count !== 1) wholeSiteFindings.push(auditFinding("seo", "technical", "A subpage has no single H1 heading", "Exactly one H1 gives search engines and screen readers the page's main topic.", `${path} has ${h1Count === 0 ? "no" : `${h1Count}`} H1 headings.`, `Use exactly one descriptive H1 on ${path}.`));
+          if (imgTags.length && imgNoAlt) wholeSiteFindings.push(auditFinding("seo", "technical", "A subpage ships images without alt text", "Alt text makes images readable to search engines and screen readers.", `${imgNoAlt} of ${imgTags.length} images on ${path} have no alt attribute.`, `Add descriptive alt attributes to the images on ${path}.`));
+        } catch { /* one unreachable subpage never blocks the scan */ }
+      }
+    }
     const robots = policy.robots;
     let sitemap: MetricCheck;
     try { const sitemapUrl = new URL("/sitemap.xml", origin); await assertRobotsAllows(sitemapUrl); const res = await safeFetch(sitemapUrl.toString(), { timeoutMs: 3500, maxBytes: 500_000, maxRedirects: 2, beforeRedirect: assertRobotsAllows }); sitemap = { state: "checked", value: res.status }; } catch { sitemap = unknown("Could not check sitemap.xml."); }
@@ -516,7 +549,7 @@ async function processScanCore(id: string, leaseToken?: string) {
       comingSoonCount: (snap.text.match(/coming soon/gi) ?? []).length });
     const formAudit = formFindings({ forms: snap.forms, primaryCtas: snap.primaryCtas.filter((cta: { href: string }) => Boolean(cta.href)), statusByUrl: linkResult.statusByUrl, baseUrl: finalUrl.toString() });
     const designSignals = auditDesignSignals([snap.visualSignals, mobileSnap.visualSignals]);
-    const findings = [...deterministicFindings({ page: snap, mobile: mobileSnap, links: linkResult, status: initial.status, protocol: finalUrl.protocol, ogImage, ogImageTooSmall }), ...security.findings, ...seo, ...leftovers, ...formAudit, ...designSignals.findings];
+    const findings = [...deterministicFindings({ page: snap, mobile: mobileSnap, links: linkResult, status: initial.status, protocol: finalUrl.protocol, ogImage, ogImageTooSmall }), ...security.findings, ...seo, ...leftovers, ...formAudit, ...wholeSiteFindings, ...designSignals.findings];
     const checkResults: Record<string, MetricCheck> = {
       ...security.checks,
       status: { state: "checked", value: initial.status }, redirects: { state: "checked", value: initial.redirects.length }, https: { state: "checked", value: finalUrl.protocol === "https:" ? "Secure" : "Not secure" },
@@ -535,6 +568,7 @@ async function processScanCore(id: string, leaseToken?: string) {
       securityHeaders: { state: "checked", value: Object.values(security.checks).filter((item) => item.value === "Present").length }, exposedFiles: { state: "checked", value: exposure.exposed.length }, frontendSecrets: { state: "checked", value: secrets.length },
       mixedContent: { state: "checked", value: snap.mixedContent.length }, cookieIssues: { state: "checked", value: cookies.length }, corsWildcardRoutes: { state: "checked", value: corsWildcards.length },
       formCount: { state: "checked", value: snap.forms.length }, primaryCtaTargets: { state: "checked", value: `${linkResult.checked} checked · ${linkResult.unknownCount} unknown` }, consoleErrors: { state: "checked", value: desktop.consoleErrors + mobile.consoleErrors },
+      wholeSitePages: { state: "checked", value: `${subpagesAudited + 1} page${subpagesAudited ? "s" : ""} audited (entry + ${subpagesAudited} linked subpages)` },
       consoleErrorDetails: (desktop.consoleMessages ?? []).length + (mobile.consoleMessages ?? []).length ? { state: "checked" as const, value: [...(desktop.consoleMessages ?? []), ...(mobile.consoleMessages ?? [])].join(" | ") } : { state: "checked" as const, value: "No console errors observed." },
       brokenLinkDetails: linkResult.broken.length ? { state: "checked" as const, value: linkResult.broken.slice(0, 6).join(" | ") } : { state: "checked" as const, value: "No broken links among the checked set." },
       redirectChain: { state: "checked", value: initial.redirects.length ? initial.redirects.join(" → ") : "No redirects" },
