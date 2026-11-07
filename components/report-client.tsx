@@ -74,6 +74,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   const [tool, setTool] = useState("Cursor"); const [copyStatus, setCopyStatus] = useState(""); const [shareStatus, setShareStatus] = useState(""); const [emailStatus, setEmailStatus] = useState("");
   const [checkoutPending, setCheckoutPending] = useState(false); const [checkoutMessage, setCheckoutMessage] = useState(""); const [checkoutSection, setCheckoutSection] = useState("");
   const [accessStatus, setAccessStatus] = useState("");
+  const [notifyStatus, setNotifyStatus] = useState("");
   const [animatedScore, setAnimatedScore] = useState<number | null>(null);
   const params = useParams<{ id: string }>(); const searchParams = useSearchParams();
   const id = params.id;
@@ -186,6 +187,11 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     try { const response = await fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scanId: id, email: form.get("email") }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "The email could not be saved."); setEmailStatus(result.emailed ? "Saved, and a link to this report is on its way." : "Saved. Email delivery is not configured, so keep this report link."); }
     catch (error) { setEmailStatus(error instanceof Error ? error.message : "The email could not be saved."); }
   }
+  async function submitNotify(form: FormData) {
+    setNotifyStatus("");
+    try { const response = await fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scanId: id, email: form.get("email") }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "The email could not be saved."); setNotifyStatus("Saved. We'll email you the moment checkout opens."); }
+    catch (error) { setNotifyStatus(error instanceof Error ? error.message : "The email could not be saved."); }
+  }
   async function requestAccess(form: FormData) {
     setAccessStatus("");
     try {
@@ -241,15 +247,17 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         <div className="finding-list">{findings.slice(0, 3).map((item, index) => <GlassCard as="article" id={`finding-${item.id}`} className={`finding severity-card severity-${item.severity}`} shellClassName="finding-glass-shell" key={item.id}><span className="mono finding-index">0{index + 1}</span><div><span className={`mono finding-meta severity-${item.severity}`}>{item.code ? `${item.code} · ` : ""}{labels[item.category]} · {item.severity.toUpperCase()} IMPACT</span><h3>{item.title}</h3><p>{item.why_it_matters}</p></div></GlassCard>)}</div>
         {Boolean(scan.lockedCount) && !paidData && <div className="locked-findings"><p className="mono">{scan.lockedCount} MORE FINDINGS{checkoutAvailable ? ` · FULL REPORT + FIX PROMPT $${PRICE_FIX_PROMPT_USD} ONCE` : ""}</p></div>}
       </section>}
-      {scan.id !== "example" && checkoutAvailable && !paidData && <section className="wrap report-unlock-offer" aria-label="Unlock the full report and Fix Prompt">
+      {scan.id !== "example" && !paidData && <section className="wrap report-unlock-offer" id="unlock" aria-label="Unlock the full report and Fix Prompt">
         <div>
           <p className="mono report-unlock-label">FULL REPORT + FIX PROMPT · ${PRICE_FIX_PROMPT_USD} · ONE-TIME</p>
           <p>Unlock every finding with its evidence and recommended fix, plus page-copy options and prompts for your tool.</p>
-          <p className="mono report-unlock-note">ONE URL · UNLIMITED RE-SCANS FOR SEVEN DAYS · NO SUBSCRIPTION</p>
+          <p className="mono report-unlock-note">ONE URL · UNLIMITED RE-SCANS FOR SEVEN DAYS · NO SUBSCRIPTION · PROMPTS FOR CURSOR, CLAUDE CODE, CODEX &amp; MORE</p>
         </div>
         <div className="report-unlock-action">
-          <button className="inline-unlock" type="button" onClick={() => void checkout("report")} disabled={checkoutPending}>{checkoutPending && checkoutSection === "report" ? "Opening checkout…" : `Unlock full report — $${PRICE_FIX_PROMPT_USD}`}</button>
+          {checkoutAvailable ? <button className="inline-unlock" type="button" onClick={() => void checkout("report")} disabled={checkoutPending}>{checkoutPending && checkoutSection === "report" ? "Opening checkout…" : `Unlock full report — $${PRICE_FIX_PROMPT_USD}`}</button>
+            : <form className="unlock-notify" action={async (formData) => submitNotify(formData)}><input type="email" required maxLength={254} name="email" autoComplete="email" placeholder="you@yourapp.com" aria-label="Email address"/><button type="submit" className="inline-unlock">Notify me at launch</button></form>}
           {checkoutMessage && checkoutSection === "report" && <p className="inline-status" role="status">{checkoutMessage}</p>}
+          {notifyStatus && <p className="inline-status" role="status">{notifyStatus}</p>}
         </div>
       </section>}
       <TechnicalReportSections scan={{ ...scan, checkoutAvailable } as FreeReport & { findingCounts?: Record<string, { total: number; critical: number; high: number; medium: number; low: number }>; shareImageAvailable?: boolean; checkoutAvailable?: boolean; findings?: Finding[] }} paidFindings={paidData?.findings} onRetryLighthouse={retryLighthouse} onUnlock={(section) => void checkout(section)} checkoutPending={checkoutPending} checkoutMessage={checkoutMessage} checkoutSection={checkoutSection}/>

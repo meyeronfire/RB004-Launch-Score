@@ -77,13 +77,16 @@ describe("free and paid report boundaries", () => {
     findings: Array.from({ length: 5 }, (_, index) => ({ id: `finding-${index}`, category: "trust" as const, severity: "low" as const, title: `Finding ${index}`, why_it_matters: "A reason.", evidence: "private evidence", fix: "private fix" })),
     paid: false, leaseToken: "private-lease", leadEmail: "private@example.test", paidPayload: { available: true, prompts: { Cursor: "private prompt" }, findings: [], copyDrafts: { status: "private", headlines: [], subheadline: "", cta: "", faq: "", metaTitle: "", metaDescription: "" } },
   };
-  it("projects all finding summaries with no evidence, fixes, email, or paid payload", () => {
+  it("projects finding summaries with truncated evidence, no fixes, email, or paid payload", () => {
     const projection = publicScan(report) as Record<string, unknown>;
     const findings = projection.findings as Array<Record<string, unknown>>;
     expect(findings).toHaveLength(5);
-    expect(findings[0]).toMatchObject({ title: "Finding 0", why_it_matters: "A reason." });
+    expect(findings[0]).toMatchObject({ title: "Finding 0", why_it_matters: "A reason.", evidence: "private evidence" });
     expect(findings[0].section).toBe("other");
-    expect(findings[0]).not.toHaveProperty("fix"); expect(findings[0]).not.toHaveProperty("evidence");
+    expect(findings[0]).not.toHaveProperty("fix");
+    const longEvidence = { ...report, findings: [{ ...report.findings[0], evidence: "x".repeat(500) }, ...report.findings.slice(1)] } as typeof report;
+    const truncated = (publicScan(longEvidence) as Record<string, unknown>).findings as Array<Record<string, unknown>>;
+    expect((truncated[0].evidence as string).length).toBeLessThanOrEqual(201);
     expect(projection.lockedCount).toBe(2); expect(projection.lockedTitles).toEqual([]);
     expect(projection.paidAvailable).toBe(true);
     expect(projection.checkoutAvailable).toBe(false);
