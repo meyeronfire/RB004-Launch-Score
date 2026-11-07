@@ -331,8 +331,19 @@ button, input { font: inherit; }
 .locked-finding-glass-shell { max-width: 1000px; margin-bottom: 14px; }
 .depth-finding { padding: clamp(24px, 3vw, 40px); border: 0; border-radius: 20px; }
 .depth-finding:last-child { border-bottom: 0; }
-.share-preview-glass-shell { width: min(100%, 980px); }
+.share-preview-glass-shell { width: min(100%, 780px); margin-inline: auto; }
 .share-preview-card { width: 100%; background: rgba(255,255,255,.03); border-radius: 20px; overflow: hidden; }
+.share-preview-card-single { display: flex; justify-content: center; padding: clamp(10px, 1.5vw, 18px); }
+.share-card-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 28px; margin: 0 0 18px; }
+.share-card-group { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+.share-card-group button { min-height: 44px; padding: 0 14px; color: var(--ink-faint); background: transparent; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; font: 11px var(--mono); cursor: pointer; }
+.share-card-group button:hover, .share-card-group button.active { color: var(--ink); }
+.share-card-group button.active { border-bottom-color: var(--accent); }
+.share-card-preview-image { position: relative; max-width: 100%; max-height: 640px; overflow: hidden; background: #050505; }
+.share-card-preview-image img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.share-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; margin-top: 16px; }
+.share-card-actions .inline-unlock { margin-top: 0; }
+.share-card-actions > .mono { color: var(--ink-faint); font-size: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   .glass-shell--glow::before { animation: none; }

@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Finding, LighthouseStrategy, LighthouseReport, MetricCheck } from "@/lib/types";
 import { GlassCard } from "@/components/glass-card";
 import { PRICE_FIX_PROMPT_USD } from "@/config/release";
+import { SHARE_FORMATS, type ShareFormat, type ShareVariant } from "@/lib/share-card";
 
 type SectionCount = { total: number; critical: number; high: number; medium: number; low: number };
 type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; sharePreview?: { title: string; description: string }; findingCounts?: Record<string, SectionCount>; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; checkoutAvailable?: boolean; findings?: Finding[]; designReview?: { state: "checked" | "unknown"; dimensions?: Record<string, number>; score?: number }; categoryScores?: Record<string, number | undefined> };
@@ -58,11 +59,11 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
   const [strategy, setStrategy] = useState<"mobile" | "desktop">("mobile");
   const [retrying, setRetrying] = useState(false);
   const [retryFailed, setRetryFailed] = useState(false);
+  const [shareVariant, setShareVariant] = useState<ShareVariant>("score");
+  const [shareFormat, setShareFormat] = useState<ShareFormat>("og");
   const lighthouse = scan.lighthouse?.[strategy];
   const lighthouseUnavailable = !lighthouse || [...Object.values(lighthouse)].every((metric) => metric.state === "unknown");
   const lighthouseHasUnknown = !lighthouse || Object.values(lighthouse).some((metric) => metric.state === "unknown");
-  const shareImage = `/r/${encodeURIComponent(scan.id)}/opengraph-image`;
-  const shareUrl = scan.url.replace(/[?#].*$/, "");
   async function retryLighthouse() { setRetrying(true); setRetryFailed(false); const ok = await onRetryLighthouse(); setRetrying(false); setRetryFailed(!ok); }
 
   return <>
@@ -115,8 +116,24 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
     })}
 
     <section className="wrap depth-section share-preview-section" aria-labelledby="share-preview-title">
-      <div className="report-section-title"><h2 id="share-preview-title">Share preview.</h2><span className="mono">LINK CARD · NEUTRAL PREVIEW</span></div>
-      <GlassCard className={`share-preview-card${shareImage ? "" : " share-preview-card-no-image"}`} shellClassName="share-preview-glass-shell">{shareImage && <div className="share-preview-image"><Image src={shareImage} alt="Open Graph image preview" fill unoptimized/></div>}<div className="share-preview-copy"><p className="mono">{new URL(shareUrl).hostname.toUpperCase()}</p><h3>{scan.sharePreview?.title || scan.title || "No share title was found"}</h3><p>{scan.sharePreview?.description || scan.description || "No share description was found."}</p><span className="share-preview-url mono">{shareUrl}</span></div></GlassCard>
+      <div className="report-section-title"><h2 id="share-preview-title">Share your score.</h2><span className="mono">LIVE PREVIEW · PNG EXPORT</span></div>
+      <div className="share-card-controls">
+        <div className="share-card-group" role="group" aria-label="Card style">
+          {([["score", "Score card"], ["findings", "Findings card"]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={shareVariant === value} className={shareVariant === value ? "active" : ""} onClick={() => setShareVariant(value)}>{label}</button>)}
+        </div>
+        <div className="share-card-group" role="group" aria-label="Format">
+          {(["og", "portrait", "story"] as const).map((value) => <button key={value} type="button" aria-pressed={shareFormat === value} className={shareFormat === value ? "active" : ""} onClick={() => setShareFormat(value)}>{SHARE_FORMATS[value].label}</button>)}
+        </div>
+      </div>
+      <GlassCard className="share-preview-card share-preview-card-single" shellClassName="share-preview-glass-shell">
+        <div className="share-card-preview-image" style={{ aspectRatio: `${SHARE_FORMATS[shareFormat].width} / ${SHARE_FORMATS[shareFormat].height}`, width: Math.min(720, 640 * SHARE_FORMATS[shareFormat].width / SHARE_FORMATS[shareFormat].height) }}>
+          <Image src={`/r/${encodeURIComponent(scan.id)}/share?variant=${shareVariant}&format=${shareFormat}`} alt={`VERDKT ${shareVariant} card preview`} width={SHARE_FORMATS[shareFormat].width} height={SHARE_FORMATS[shareFormat].height} unoptimized />
+        </div>
+      </GlassCard>
+      <div className="share-card-actions">
+        <a className="inline-unlock" href={`/r/${encodeURIComponent(scan.id)}/share?variant=${shareVariant}&format=${shareFormat}&download=1`} download={`verdkt-${shareVariant}-${shareFormat}.png`}>Download PNG</a>
+        <span className="mono">{SHARE_FORMATS[shareFormat].label} · {shareVariant === "score" ? "score card" : "findings card"}</span>
+      </div>
     </section>
   </>;
 }
