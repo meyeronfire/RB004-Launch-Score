@@ -1,13 +1,16 @@
-export type Category = "clarity" | "conversion" | "design_brand" | "trust" | "technical" | "security";
+export type Category = "clarity" | "conversion" | "design_brand" | "trust" | "technical" | "security" | "seo_aeo";
 export type Severity = "critical" | "high" | "medium" | "low";
 export type FindingSection = "security" | "seo" | "leftovers" | "forms" | "technical" | "design" | "other";
 export type Finding = { id: string; code?: string; category: Category; section?: FindingSection; severity: Severity; title: string; why_it_matters: string; evidence: string; fix: string };
 export type DesignDimensions = { visualHierarchy: number; typography: number; spacingRhythm: number; paletteContrast: number; brandConsistency: number; genericSignals: number };
-export type DesignReview = { state: CheckState; dimensions?: DesignDimensions; score?: number; note?: string };
+export type DesignReview = { state: "checked" | "unknown"; dimensions?: DesignDimensions; score?: number; note?: string };
 export type VisualSample = { device: "Desktop" | "Mobile"; section: string; tag: string; text: string; fontFamily: string; fontSize: number; lineHeight: string; fontWeight: string; color: string; background: string; spacing: string; backgroundImage: string; classes: string; alt: string };
 export type VisualSignals = { fontFamilies: string[]; colors: string[]; spacingValues: string[]; sectionNames: string[]; samples: VisualSample[] };
-export type CheckState = "checked" | "unknown";
+export type CheckState = "checked" | "unknown" | "review" | "not_applicable";
 export type MetricCheck = { state: CheckState; value?: string | number; note?: string };
+export type AiCrawlerPolicy = { name: string; userAgent: string; purpose: string; policy: "allowed" | "blocked" | "no_matching_rule" | "unknown"; matchedRules: Array<{ directive: "allow" | "disallow"; path: string }>; requestTested: false };
+export type AiCrawlerPreference = { signal: string; label: string; status: "blocked" | "allowed" | "not_declared" | "unknown"; matchedRules: Array<{ directive: "allow" | "disallow"; path: string }> };
+export type AiCrawlerReport = { state: "checked" | "unknown"; robotsUrl?: string; fetchedAt: string; policies: AiCrawlerPolicy[]; preferences: AiCrawlerPreference[]; note: string };
 export type LighthouseStrategy = { performance: MetricCheck; accessibility: MetricCheck; bestPractices: MetricCheck; seo: MetricCheck; lcp: MetricCheck; cls: MetricCheck; inpTbt: MetricCheck };
 export type LighthouseReport = { mobile: LighthouseStrategy; desktop: LighthouseStrategy; source: "via Google PageSpeed Insights" };
 export type CaptureSegment = { image: string; top: number; width: number; height: number };
@@ -24,6 +27,7 @@ export type ScanRecord = {
   categoryCoverage?: Partial<Record<Category, number>>;
   checks?: Record<string, MetricCheck>; desktopImage?: string; mobileImage?: string;
   lighthouse?: LighthouseReport;
+  aiCrawlerReport?: AiCrawlerReport;
   annotatedCapture?: AnnotatedCapture;
   auditCounts?: { checksRun: number; passed: number; issues: number };
   scoreBreakdown?: ScoreBreakdown;

@@ -21,22 +21,22 @@ function makeInput(overrides: (typeof fixtures)[number]) {
 }
 
 describe("scoring fixtures", () => {
-  it("uses the six requested category weights totaling 100", () => {
-    expect(CATEGORY_WEIGHTS).toEqual({ clarity: 25, conversion: 25, design_brand: 15, trust: 10, technical: 15, security: 10 });
+  it("uses seven category weights including SEO/AEO that total 100", () => {
+    expect(CATEGORY_WEIGHTS).toEqual({ clarity: 15, conversion: 25, design_brand: 15, trust: 10, technical: 15, security: 10, seo_aeo: 10 });
     expect(Object.values(CATEGORY_WEIGHTS).reduce((sum, weight) => sum + weight, 0)).toBe(100);
   });
   for (const fixture of fixtures) {
     it(`${fixture.id} stays within its reviewed score range`, () => {
       const { input, coverage } = makeInput(fixture);
       const findings = deterministicFindings(input);
-      const { score } = scoreFindings(findings, coverage);
+      const { score } = scoreFindings(findings, { ...coverage, seo_aeo: 1 });
       expect(score).toBeGreaterThanOrEqual(fixture.expected[0]);
       expect(score).toBeLessThanOrEqual(fixture.expected[1]);
     });
   }
   it("limits category scores when only a partial set of checks is available", () => {
     const scored = scoreFindings([], { clarity: 0.6, conversion: 0.85, trust: 0.75, technical: 0.9 });
-    expect(scored.categoryScores).toEqual({ clarity: 80, conversion: 93, design_brand: 78, trust: 88, technical: 95, security: 78 });
+    expect(scored.categoryScores).toEqual({ clarity: 80, conversion: 93, design_brand: 78, trust: 88, technical: 95, security: 78, seo_aeo: 78 });
     expect(scored.score).toBeLessThan(100);
   });
 });

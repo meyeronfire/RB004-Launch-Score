@@ -2,11 +2,14 @@ import { randomUUID } from "node:crypto";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { imageSize } from "image-size";
 import { safeFetch, normalizePublicUrl, SafeFetchError, UnsafeTargetError, currentScanSignal, withScanSignal } from "./ssrf";
-import { makeFinding, rankFindings, scoreFindings, SEVERITY_PENALTY } from "./score";
+import { makeFinding, rankFindings } from "./score";
 import { findCachedScan, readScan, saveScan, updateScan } from "./store";
-import type { Category, Finding, MetricCheck, ScanRecord, ScoreBreakdown } from "./types";
-import { CATEGORY_WEIGHTS } from "../config/scoring";
-import { reviewContent } from "./content-review";
+import type { Finding, MetricCheck, ScanRecord } from "./types";
+import { contentReviewCheck, reviewContent } from "./content-review";
+import { buildAiCrawlerReport } from "./ai-crawler-report";
+import { isRobotsDisallowed } from "./robots";
+export { isRobotsDisallowed } from "./robots";
+import { scoreLighthouseAudit } from "./lighthouse-scoring";
 import { reviewDesign } from "./design-review";
 import { auditDesignSignals } from "./design-audit";
 import { promptVariants } from "./fix-prompts";
@@ -41,43 +44,6 @@ export function scanFailureMessage(error: unknown) {
 }
 function unknown(note: string): MetricCheck { return { state: "unknown", note }; }
 
-type RobotsGroup = { agents: string[]; rules: Array<{ allow: boolean; path: string }> };
-function matchesRobotsPath(path: string, target: string) {
-  const end = path.endsWith("$");
-  const segments = (end ? path.slice(0, -1) : path).split("*");
-  if (!target.startsWith(segments[0])) return false;
-  if (segments.length === 1) return !end || target.length === segments[0].length;
-  let cursor = segments[0].length;
-  // Consume literal segments once, in order; attacker-supplied wildcards never become a regex.
-  for (let index = 1; index < segments.length; index++) {
-    const segment = segments[index];
-    if (end && index === segments.length - 1) return target.endsWith(segment) && target.length - segment.length >= cursor;
-    const found = target.indexOf(segment, cursor);
-    if (found < 0) return false;
-    cursor = found + segment.length;
-  }
-  return true;
-}
-export function isRobotsDisallowed(text: string, target: string) {
-  const groups: RobotsGroup[] = []; let group: RobotsGroup = { agents: [], rules: [] };
-  for (const line of text.split(/\r?\n/)) {
-    const clean = line.split("#", 1)[0].trim(); if (!clean) continue;
-    const separator = clean.indexOf(":"); if (separator < 0) continue;
-    const key = clean.slice(0, separator).trim().toLowerCase(); const value = clean.slice(separator + 1).trim();
-    if (key === "user-agent") {
-      if (group.rules.length) { groups.push(group); group = { agents: [], rules: [] }; }
-      group.agents.push(value.toLowerCase());
-    } else if ((key === "allow" || key === "disallow") && group.agents.length && value) group.rules.push({ allow: key === "allow", path: value });
-  }
-  if (group.agents.length) groups.push(group);
-  const token = "rb004-launch-score";
-  const specificity = (g: RobotsGroup) => Math.max(0, ...g.agents.filter((agent) => agent !== "*" && token.includes(agent)).map((agent) => agent.length));
-  const maxSpecificity = Math.max(0, ...groups.map(specificity));
-  const selected = maxSpecificity ? groups.filter((g) => specificity(g) === maxSpecificity) : groups.filter((g) => g.agents.includes("*"));
-  const matched = selected.flatMap((g) => g.rules).filter((rule) => matchesRobotsPath(rule.path, target))
-    .sort((a, b) => b.path.replace(/[\*$]/g, "").length - a.path.replace(/[\*$]/g, "").length || Number(b.allow) - Number(a.allow));
-  return Boolean(matched[0] && !matched[0].allow);
-}
 
 const robotsCache = new Map<string, { expiresAt: number; result: Promise<{ check: MetricCheck; text?: string }> }>();
 async function robotsFor(url: URL) {
@@ -418,6 +384,8 @@ async function processScanCore(id: string, leaseToken?: string) {
     if ((contentType && !/(?:text\/html|application\/xhtml\+xml)/i.test(contentType)) || (!contentType && !looksLikeHtml)) throw new SafeFetchError("This URL does not return a reviewable HTML page.");
     const finalUrl = normalizePublicUrl(initial.finalUrl);
     await assertRobotsAllows(finalUrl);
+    const finalRobotsPolicy = await robotsFor(finalUrl);
+    const aiCrawlerReport = buildAiCrawlerReport({ robotsText: finalRobotsPolicy.text, robotsUrl: new URL("/robots.txt", finalUrl.origin).toString(), pagePath: `${finalUrl.pathname}${finalUrl.search}`, fetchedAt: new Date().toISOString() });
     let html = initial.body.toString("utf8");
     const signal = currentScanSignal();
     const launching = chromium.launch(await browserLaunchOptions());
@@ -595,34 +563,23 @@ async function processScanCore(id: string, leaseToken?: string) {
     modelOutputTokens = (contentReview.usage?.outputTokens ?? 0) + (designModelResult.usage?.outputTokens ?? 0);
     scanModel = contentReview.usage?.model || designModelResult.usage?.model || (current.paid ? process.env.LLM_MODEL_PAID || "gpt-4.1" : process.env.LLM_MODEL_FREE || process.env.LLM_MODEL || "gpt-4.1-mini");
     const designReview = designModelResult.review;
+    checkResults.contentReview = contentReviewCheck(contentReview.reviewed, contentReview.status);
+    checkResults.designReview = designReview.state === "checked"
+      ? { state: "review", value: designReview.score ?? "Qualitative review completed", note: designReview.note ?? "Visual-review assessment" }
+      : { state: "unknown", note: designReview.note ?? "Visual design review could not be completed." };
     const allFindings = [...findings, ...designModelResult.findings, ...contentReview.findings.filter((item) => !findings.some((known) => known.id === item.id))];
     const copyDrafts = contentReview.copyDrafts;
     const ranked = rankFindings(allFindings);
     const sectionCodes: Record<string, string> = { security: "SEC", seo: "SEO", leftovers: "LEFT", forms: "FORM", technical: "TECH", design: "DES", other: "GEN" };
     const codeCounters: Record<string, number> = {};
     for (const finding of ranked) { const prefix = sectionCodes[finding.section ?? "other"] ?? "GEN"; codeCounters[prefix] = (codeCounters[prefix] ?? 0) + 1; finding.code = `${prefix}-${String(codeCounters[prefix]).padStart(2, "0")}`; }
-    const lighthouseScores = [psi.performance, psi.accessibility, psi.bestPractices, psi.seo, psiDesktop.performance, psiDesktop.accessibility, psiDesktop.bestPractices, psiDesktop.seo].flatMap((item) => item.state === "checked" && typeof item.value === "number" ? [item.value] : []);
-    const technicalCoverage = 0.9 + 0.1 * (lighthouseScores.length / 8);
-    const securityCoverage = Object.values(security.checks).filter((item) => item.state === "checked").length / Math.max(1, Object.keys(security.checks).length);
-    const categoryCoverage = { clarity: contentReview.findings.length ? 1 : 0.6, conversion: contentReview.findings.length ? 1 : 0.85, design_brand: designReview.state === "checked" ? 1 : 0.45, trust: 1, technical: technicalCoverage, security: securityCoverage };
-    const scored = scoreFindings(ranked, categoryCoverage, lighthouseScores, designReview.score === undefined ? {} : { design_brand: designReview.score });
-    const categoryBase: Partial<Record<Category, number>> = designReview.score === undefined ? {} : { design_brand: designReview.score };
-    const scoreBreakdown: ScoreBreakdown = {
-      categories: Object.fromEntries((Object.keys(CATEGORY_WEIGHTS) as Category[]).map((category) => {
-        const catFindings = ranked.filter((finding) => finding.category === category);
-        const lost = catFindings.reduce((sum, finding) => sum + SEVERITY_PENALTY[finding.severity], 0);
-        const base = Math.round(categoryBase[category] ?? 100);
-        const ceiling = Math.round(50 + 50 * Math.max(0, Math.min(1, categoryCoverage[category] ?? 0.55)));
-        return [category, { score: scored.categoryScores[category], base, ceiling, lost, count: catFindings.length }];
-      })),
-      top: [...ranked].sort((a, b) => SEVERITY_PENALTY[b.severity] - SEVERITY_PENALTY[a.severity]).slice(0, 5).map((finding) => ({ code: finding.code, severity: finding.severity, penalty: SEVERITY_PENALTY[finding.severity], title: finding.title, category: finding.category })),
-    };
+    const scored = scoreLighthouseAudit({ findings: ranked, checks: checkResults, mobile: psi, desktop: psiDesktop, designReview });
     const hints = stackHints(html);
     const prompts = promptVariants({ url: finalUrl.toString(), title: snap.title, stack: hints, findings: ranked, copyDrafts });
     const paidPayload = { available: copyDrafts.headlines.length === 3, paidModelReady: Boolean(current.paid && copyDrafts.headlines.length === 3), findings: ranked, prompts, copyDrafts, model: scanModel };
-    await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), scoreBreakdown,
-      checks: checkResults, categoryCoverage, lighthouse: { mobile: psi, desktop: psiDesktop, source: "via Google PageSpeed Insights" }, sharePreview: { title: snap.ogTitle || snap.title, description: snap.ogDescription || snap.description }, shareImageUrl,
-      desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 2, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
+    await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), scoreBreakdown: scored.scoreBreakdown,
+      checks: checkResults, categoryCoverage: scored.categoryCoverage, aiCrawlerReport, lighthouse: { mobile: psi, desktop: psiDesktop, source: "via Google PageSpeed Insights" }, sharePreview: { title: snap.ogTitle || snap.title, description: snap.ogDescription || snap.description }, shareImageUrl,
+      desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 3, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
       stackHints: hints, contentReview: contentReview.status, paidPayload }, leaseToken);
     await settleScanCost({ scanId: id, paid: Boolean(current.paid), browserMs, inputTokens: modelInputTokens, outputTokens: modelOutputTokens, model: scanModel });
     for (const script of scripts) script.source = "";

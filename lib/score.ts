@@ -11,7 +11,7 @@ export function makeFinding(input: Omit<Finding, "id">): Finding {
   return { ...input, id: `${input.category}-${slug}` };
 }
 
-export function scoreFindings(findings: Finding[], coverage: Partial<Record<Category, number>> = { clarity: 0.6, conversion: 0.7, design_brand: 0.45, trust: 0.25, technical: 0.7, security: 0.55 }, lighthouseScores?: number[], assessments: Partial<Record<Category, number>> = {}) {
+export function scoreFindings(findings: Finding[], coverage: Partial<Record<Category, number>> = { clarity: 0.6, conversion: 0.7, design_brand: 0.45, trust: 0.25, technical: 0.7, security: 0.55, seo_aeo: 0.55 }, lighthouseScores?: number[], assessments: Partial<Record<Category, number>> = {}) {
   const categoryScores = {} as Record<Category, number>;
   for (const category of Object.keys(CATEGORY_WEIGHTS) as Category[]) {
     const penalties = findings.filter((f) => f.category === category).reduce((sum, f) => sum + PENALTY[f.severity], 0);

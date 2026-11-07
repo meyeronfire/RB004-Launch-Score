@@ -6,7 +6,7 @@ const baseScan = {
   status: "complete" as const,
   score: 81,
   domain: "example.test",
-  categoryScores: { clarity: 70, conversion: 82, design_brand: 73, trust: 91, technical: 88, security: 100 },
+  categoryScores: { clarity: 70, conversion: 82, design_brand: 73, trust: 91, technical: 88, security: 100, seo_aeo: 84 },
   findings: [
     { id: "a", category: "security" as const, severity: "critical" as const, title: "A", why_it_matters: "", evidence: "", fix: "" },
     { id: "b", category: "technical" as const, severity: "high" as const, title: "B", why_it_matters: "", evidence: "", fix: "" },
@@ -16,7 +16,7 @@ const baseScan = {
 } satisfies Pick<ScanRecord, "score" | "domain" | "categoryScores" | "findings" | "status">;
 
 describe("share-card data", () => {
-  it("maps real score, six categories, and severity totals without exposing finding text", () => {
+  it("maps real score, seven categories, and severity totals without exposing finding text", () => {
     const data = buildShareCardData(baseScan);
     expect(data.score).toBe(81);
     expect(data.domain).toBe("example.test");
@@ -27,6 +27,7 @@ describe("share-card data", () => {
       { label: "Trust", value: 91 },
       { label: "Technical", value: 88 },
       { label: "Security", value: 100 },
+      { label: "SEO / AEO", value: 84 },
     ]);
     expect(data.severityCounts).toEqual({ critical: 1, high: 1, medium: 1, low: 1 });
     expect(data.issueCount).toBe(4);

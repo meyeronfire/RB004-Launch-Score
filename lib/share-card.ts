@@ -37,6 +37,7 @@ const CATEGORY_LABELS: Array<[string, Category]> = [
   ["Trust", "trust"],
   ["Technical", "technical"],
   ["Security", "security"],
+  ["SEO / AEO", "seo_aeo"],
 ];
 
 // Pure data shaping for share cards. Deterministic; safe for missing scores,

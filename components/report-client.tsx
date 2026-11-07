@@ -10,27 +10,23 @@ import type { Finding } from "@/lib/types";
 import { TechnicalReportSections } from "@/components/technical-report-sections";
 import { GlassCard } from "@/components/glass-card";
 import { ScanForm } from "@/components/scan-form";
-import { CATEGORY_WEIGHTS } from "@/config/scoring";
+import { CATEGORY_WEIGHTS, CATEGORY_CHECKS } from "@/config/scoring";
 import type { Category } from "@/lib/types";
 import { checkOutcome } from "@/lib/audit-counts";
-import { getCheckLedger } from "@/lib/report-artifacts";
+import { getCheckLedger, getCategoryCheckStats, getCheckLabel, type CheckStatus } from "@/lib/report-artifacts";
 import { ScrollReveal } from "@/components/scroll-reveal";
 import { promptVariants } from "@/lib/fix-prompts";
 import { ReportArtifactActions } from "@/components/report-artifact-actions";
 
 type FreeReport = ReturnType<typeof import("@/lib/store").publicScan>;
-const labels: Record<Category, string> = { clarity: "Clarity", conversion: "Conversion", design_brand: "Design & Brand", trust: "Trust", technical: "Technical", security: "Security" };
+const priorityLabel: Record<Finding["severity"], string> = { critical: "P1 · URGENT", high: "P2 · HIGH", medium: "P3 · MEDIUM", low: "P4 · LOW" };
+const ruleLoss: Record<Finding["severity"], number> = { critical: 22, high: 13, medium: 7, low: 3 };
+const labels: Record<Category, string> = { clarity: "Clarity", conversion: "Conversion", design_brand: "Design & Brand", trust: "Trust", technical: "Technical", security: "Security", seo_aeo: "SEO / AEO" };
+const categoryLabel = (category: string) => labels[category as Category] ?? (category ? category.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) : "Other");
 const categoryOrder = Object.keys(CATEGORY_WEIGHTS) as Category[];
 const scoreDisplay = (score: number) => String(score).padStart(2, "0");
 const scanSteps = ["Checking scan permissions…", "Rendering the desktop page…", "Rendering the mobile page…", "Checking links and page signals…", "Preparing the evidence-led report…", "Reviewing visual design…"];
-const categoryChecks: Record<Category, string[]> = {
-  clarity: ["title", "description", "h1Count", "headingOrder"],
-  conversion: ["primaryCtaTargets", "mobileOverflow", "formCount"],
-  design_brand: ["designContrastFailures"],
-  trust: ["proofSignals", "pricing", "faq", "contact", "ogTitle", "ogDescription", "twitterCard"],
-  technical: ["status", "redirects", "sitemap", "imageAltCoverage", "pageSpeedMobile", "pageSpeedDesktop", "lighthouseMobileAccessibility", "lighthouseDesktopAccessibility", "lighthouseMobileBestPractices", "lighthouseDesktopBestPractices", "lighthouseMobileSeo", "lighthouseDesktopSeo", "consoleErrors"],
-  security: ["https", "tlsCertificate", "httpToHttps", "contentSecurityPolicy", "strictTransportSecurity", "frameProtection", "contentTypeOptions", "referrerPolicy", "permissionsPolicy", "exposedFiles", "frontendSecrets", "mixedContent", "cookieIssues", "corsWildcardRoutes"],
-};
+const categoryChecks = CATEGORY_CHECKS;
 const checkNames: Record<string, string> = { title: "Page title", description: "Meta description", h1Count: "Single H1", headingOrder: "Heading order", primaryCtaTargets: "Primary action destination", mobileOverflow: "Mobile fit", formCount: "Forms inspected", designContrastFailures: "Text contrast", proofSignals: "Proof signal", pricing: "Pricing information", faq: "FAQ", contact: "Contact path", ogTitle: "Share title", ogDescription: "Share description", twitterCard: "X card metadata", status: "Page response", redirects: "Redirect chain", sitemap: "Sitemap", imageAltCoverage: "Image descriptions", pageSpeedMobile: "Mobile Lighthouse performance", pageSpeedDesktop: "Desktop Lighthouse performance", lighthouseMobileAccessibility: "Mobile accessibility", lighthouseDesktopAccessibility: "Desktop accessibility", lighthouseMobileBestPractices: "Mobile best practices", lighthouseDesktopBestPractices: "Desktop best practices", lighthouseMobileSeo: "Mobile Lighthouse SEO", lighthouseDesktopSeo: "Desktop Lighthouse SEO", consoleErrors: "Browser errors", https: "HTTPS", tlsCertificate: "TLS certificate", httpToHttps: "HTTPS redirect", contentSecurityPolicy: "CSP", strictTransportSecurity: "HSTS", frameProtection: "Frame protection", contentTypeOptions: "Content type protection", referrerPolicy: "Referrer policy", permissionsPolicy: "Permissions policy", exposedFiles: "Exposed files", frontendSecrets: "Frontend secrets", mixedContent: "Mixed content", cookieIssues: "Cookie attributes", corsWildcardRoutes: "CORS policy" };
 
 function CategoryRing({ category, score }: { category: Category; score?: number }) {
@@ -126,7 +122,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [completed, scan.score]);
-  const contentUnavailable = !scan.contentReview || /unavailable|could not/i.test(scan.contentReview);
+  const contentUnavailable = !scan.checks?.contentReview || scan.checks.contentReview.state === "unknown";
   const speedUnavailable = !scan.lighthouse || [...Object.values(scan.lighthouse.mobile), ...Object.values(scan.lighthouse.desktop)].every((metric) => metric.state === "unknown");
   const partial = contentUnavailable || speedUnavailable || Object.values(scan.categoryCoverage ?? {}).some((coverage) => coverage < 1);
   const prompt = paidData?.prompts[tool] ?? "";
@@ -183,9 +179,11 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   }
   const findings = scan.findings ?? [];
   const checkLedger = getCheckLedger(scan.checks, findings);
-  const checkCounts = checkLedger.reduce((counts, row) => { counts[row.status] += 1; return counts; }, { pass: 0, issue: 0, unknown: 0, measured: 0 });
+  const checkCounts = checkLedger.reduce<Record<CheckStatus, number>>((counts, row) => { counts[row.status] += 1; return counts; }, { pass: 0, issue: 0, review: 0, unknown: 0, not_applicable: 0, measured: 0 });
+  const categoryStats = getCategoryCheckStats(scan.checks, findings, scan.categoryScores);
   const reportCounts = { checksRun: checkLedger.length, passed: checkCounts.pass, issues: checkCounts.issue };
   const weightLabel = `WEIGHTS · ${categoryOrder.map((key) => CATEGORY_WEIGHTS[key]).join(" / ")}`;
+  const unscoredCategories = categoryOrder.filter((key) => typeof scan.categoryScores?.[key] !== "number");
   const currentStep = scanSteps.indexOf(scan.phase);
   const speedTile = (key: string, label: string, unit: string, goodLimit: number) => { const raw = Number(scan.checks?.[key]?.value ?? NaN); return { label, value: Number.isFinite(raw) ? `${raw} ${unit}` : "n/a", good: Number.isFinite(raw) && raw <= goodLimit }; };
   const speedTiles = [speedTile("speedLcp", "LCP", "ms", 2500), speedTile("speedFcp", "FCP", "ms", 1800), speedTile("speedCls", "CLS", "", 0.1), speedTile("speedDcl", "DCL", "ms", 1800)];
@@ -202,18 +200,20 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         <GlassCard className="score-overview" shellClassName="report-score-shell">
           <div className="score-line" role="img" aria-label={`${PRODUCT_NAME}: ${scan.score ?? 0} out of 100`}><span className="score-number" aria-hidden="true">{scoreDisplay(animatedScore ?? scan.score ?? 0)}</span><span className="score-denom" aria-hidden="true">/100</span><span className="score-tick" aria-hidden="true"/></div>
           <p className="coverage-note score-coverage">{partial ? "Some optional checks could not be confirmed." : "Assessment complete."} Unknown checks do not add points.</p>
-          <p className="audit-counts mono">{reportCounts.checksRun} checks run · {reportCounts.passed} passed · {reportCounts.issues} issues · {checkCounts.unknown} unknown · {checkCounts.measured} measured</p>
+          <div className="audit-counts mono">{reportCounts.checksRun} checks run · {reportCounts.passed} passed · {reportCounts.issues} issues · {checkCounts.review} review · {checkCounts.unknown} unknown · {checkCounts.not_applicable} N/A · {checkCounts.measured} measured</div>
           {searchParams.get("checkout") === "complete" && <p className="inline-status" role="status">Your checkout returned to this report. Once the payment is verified, we’ll email a secure purchaser link for the full report.</p>}
           {searchParams.get("checkout") === "cancelled" && <p className="inline-status" role="status">Checkout was cancelled. Your free report is still available here.</p>}
         </GlassCard>
-        <div className="score-summary"><h1>{scan.title ? `A first look at ${scan.title}` : "Your launch page, at a glance."}</h1><p>Six angles on whether a new visitor can understand, trust, and act on your page.</p></div>
+        <div className="score-summary"><h1>{scan.title ? `A first look at ${scan.title}` : "Your launch page, at a glance."}</h1><p>Seven angles on whether a new visitor can understand, trust, and act on your page.</p></div>
         <div className="category-rings">{categoryOrder.map((key) => <CategoryRing key={key} category={key} score={scan.categoryScores?.[key]}/>)}</div>
+        {unscoredCategories.length > 0 && <p className="coverage-note category-legacy-note">Scores not recorded for this saved report: {unscoredCategories.map((category) => labels[category]).join(", ")}. Historical reports are not rescored automatically.</p>}
       </section>
       <section className="wrap categories-section"><div className="report-section-title"><h2>Categories.</h2><span className="mono">{weightLabel}</span></div>
         <div className="speed-insights" aria-label="Rendered speed insights">
           {speedTiles.map((tile) => <div key={tile.label}><span className="mono">{tile.label}</span><strong className={`mono${tile.good ? " good" : " bad"}`}>{tile.value}</strong></div>)}
         </div>
         <div className="score-categories">{categoryOrder.map((key) => <div className="category-row" key={key}><span>{labels[key]}</span><div className="category-track" aria-hidden="true"><i style={{ width: `${scan.categoryScores?.[key] ?? 0}%` }}/></div><span className="mono category-score">{scan.categoryScores?.[key] ?? "n/a"}</span></div>)}</div>
+        <div className="category-status-grid" aria-label="Check coverage by category">{categoryOrder.map((key) => { const stats = categoryStats[key]; return <article className="category-status-card" key={key}><div className="category-status-heading"><strong>{labels[key]}</strong><span className="mono">{stats.score ?? "n/a"}/100</span></div><div className="category-status-counts mono"><span>{stats.pass} pass</span><span>{stats.issue} issue</span><span>{stats.review} review</span><span>{stats.unknown} unknown</span><span>{stats.not_applicable} N/A</span><span>{stats.measured} measured</span></div></article>; })}</div>
         {scan.scoreBreakdown && <details className="score-breakdown"><summary className="mono">Why this scored this way</summary>
           <div className="breakdown-grid">
             <div>
@@ -226,9 +226,9 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
             </div>
           </div>
           <p className="coverage-note">Scores are deterministic: each category starts from its assessment (default 100) and loses fixed rule points per finding (critical −22, high −13, medium −7, low −3), capped by confirmed evidence. Unknown checks stay unknown.</p>
-        </details>}<div className="category-passed-groups">{categoryOrder.map((category) => { const passed = categoryChecks[category].filter((key) => scan.checks?.[key] && checkOutcome(key, scan.checks[key], findings) === true).map((key) => checkNames[key]); if (!passed.length) return null; return <details className="category-passed-group" key={category}><summary className="mono">{labels[category]} · {passed.length} passed</summary><ul className="passed-checks">{passed.map((name) => <li className="mono" key={name}><span aria-hidden="true">✓</span>{name}</li>)}</ul></details>; })}</div></section>
+        </details>}<div className="category-passed-groups">{categoryOrder.map((category) => { const passed = categoryChecks[category].filter((key) => scan.checks?.[key] && checkOutcome(key, scan.checks[key], findings) === true).map((key) => ({ key, label: checkNames[key] ?? getCheckLabel(key) })); if (!passed.length) return null; return <details className="category-passed-group" key={category}><summary className="mono">{labels[category]} · {passed.length} passed</summary><ul className="passed-checks">{passed.map(({ key, label }) => <li className="mono" key={key}><span aria-hidden="true">✓</span>{label}</li>)}</ul></details>; })}</div></section>
       {findings.length > 0 && <section className="wrap findings-section"><div className="report-section-title"><h2>Top fixes.</h2><span className="mono">TOP {Math.min(findings.length, 3)} FREE FINDINGS</span></div>
-        <div className="finding-list">{findings.slice(0, 3).map((item, index) => <GlassCard as="article" id={`finding-${item.id}`} className={`finding severity-card severity-${item.severity}`} shellClassName="finding-glass-shell" key={item.id}><span className="mono finding-index">0{index + 1}</span><div><span className={`mono finding-meta severity-${item.severity}`}>{item.code ? `${item.code} · ` : ""}{labels[item.category]} · {item.severity.toUpperCase()} IMPACT</span><h3>{item.title}</h3><p>{item.why_it_matters}</p></div></GlassCard>)}</div>
+        <div className="finding-list">{findings.slice(0, 3).map((item, index) => <GlassCard as="article" id={`finding-${item.id}`} className={`finding severity-card severity-${item.severity}`} shellClassName="finding-glass-shell" key={item.id}><span className="mono finding-index">0{index + 1}</span><div><span className={`mono finding-meta severity-${item.severity}`}>{item.code ? `${item.code} · ` : ""}{categoryLabel(item.category)} · {item.severity.toUpperCase()} · {priorityLabel[item.severity]} · −{ruleLoss[item.severity]} RULE POINTS</span><h3>{item.title}</h3><p><strong>Why it matters:</strong> {item.why_it_matters}</p><p className="finding-evidence"><strong>Evidence:</strong> {item.evidence}</p></div></GlassCard>)}</div>
         {Boolean(scan.lockedCount) && !paidData && <div className="locked-findings"><p className="mono">{scan.lockedCount} MORE FINDINGS{checkoutAvailable ? ` · FULL REPORT + FIX PROMPT $${PRICE_FIX_PROMPT_USD} ONCE` : ""}</p></div>}
       </section>}
       {scan.id !== "example" && !paidData && <section className="wrap report-unlock-offer" id="unlock" aria-label="Unlock the full report and Fix Prompt">
@@ -261,7 +261,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
         const selected = tabs[next];
         if (selected?.dataset.tool) { setTool(selected.dataset.tool); selected.focus(); }
-      }}>{Object.keys(paidData.prompts).map((name) => <button type="button" role="tab" id={`prompt-tab-${name}`} data-tool={name} aria-controls="prompt-content" tabIndex={tool === name ? 0 : -1} aria-selected={tool === name} className={tool === name ? "active" : ""} onClick={() => setTool(name)} key={name}>{name}</button>)}</div><pre className="prompt-output" id="prompt-content" role="tabpanel" aria-labelledby={`prompt-tab-${tool}`} tabIndex={0}>{prompt}</pre><button className="primary-action" onClick={copyPrompt}>Copy {tool} prompt</button><span role="status">{copyStatus}</span><div className="all-findings"><h3>Full ranked findings</h3>{paidData.findings.map((item) => <article className="finding" key={item.id}><div><span className="mono finding-meta">{labels[item.category]} · {item.severity.toUpperCase()} IMPACT</span><h3>{item.title}</h3><p>{item.why_it_matters}</p><p><strong>Evidence:</strong> {item.evidence}</p><p><strong>Suggested fix:</strong> {item.fix}</p></div></article>)}</div></section>}
+      }}>{Object.keys(paidData.prompts).map((name) => <button type="button" role="tab" id={`prompt-tab-${name}`} data-tool={name} aria-controls="prompt-content" tabIndex={tool === name ? 0 : -1} aria-selected={tool === name} className={tool === name ? "active" : ""} onClick={() => setTool(name)} key={name}>{name}</button>)}</div><pre className="prompt-output" id="prompt-content" role="tabpanel" aria-labelledby={`prompt-tab-${tool}`} tabIndex={0}>{prompt}</pre><button className="primary-action" onClick={copyPrompt}>Copy {tool} prompt</button><span role="status">{copyStatus}</span><div className="all-findings"><h3>Full ranked findings</h3>{paidData.findings.map((item) => <article className="finding" key={item.id}><div><span className="mono finding-meta">{categoryLabel(item.category)} · {item.severity.toUpperCase()} IMPACT</span><h3>{item.title}</h3><p>{item.why_it_matters}</p><p><strong>Evidence:</strong> {item.evidence}</p><p><strong>Suggested fix:</strong> {item.fix}</p></div></article>)}</div></section>}
     </>}
     <footer className="wrap footer"><span>{RELEASE_CODE} — A Regular Basis release. Berlin.</span><nav className="footer-links" aria-label="Legal and navigation"><Link href="/">Run another scan</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link><Link href="/refund">Refunds</Link></nav></footer>
   </main>;

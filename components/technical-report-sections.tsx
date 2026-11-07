@@ -2,14 +2,16 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import type { Finding, LighthouseStrategy, LighthouseReport, MetricCheck } from "@/lib/types";
+import type { AiCrawlerReport, Category, Finding, LighthouseStrategy, LighthouseReport, MetricCheck } from "@/lib/types";
+import { CATEGORY_CHECKS } from "@/config/scoring";
 import { GlassCard } from "@/components/glass-card";
 import { PRICE_FIX_PROMPT_USD } from "@/config/release";
 import { SHARE_FORMATS, type ShareFormat, type ShareVariant } from "@/lib/share-card";
-import { getCheckLedger } from "@/lib/report-artifacts";
+import { getCheckLedger, type CheckStatus } from "@/lib/report-artifacts";
+import { SEVERITY_PENALTY } from "@/lib/score";
 
 type SectionCount = { total: number; critical: number; high: number; medium: number; low: number };
-type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; sharePreview?: { title: string; description: string }; findingCounts?: Record<string, SectionCount>; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; checkoutAvailable?: boolean; findings?: Finding[]; designReview?: { state: "checked" | "unknown"; dimensions?: Record<string, number>; score?: number }; categoryScores?: Record<string, number | undefined> };
+type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; aiCrawlerReport?: AiCrawlerReport; sharePreview?: { title: string; description: string }; findingCounts?: Record<string, SectionCount>; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; checkoutAvailable?: boolean; findings?: Finding[]; designReview?: { state: "checked" | "unknown"; dimensions?: Record<string, number>; score?: number }; categoryScores?: Record<string, number | undefined>; categoryCoverage?: Partial<Record<Category, number>>; scoringVersion?: number };
 const strategies = [["performance", "Performance"], ["accessibility", "Accessibility"], ["bestPractices", "Best Practices"], ["seo", "SEO"]] as const;
 const sections = [["design", "Design & Brand"], ["security", "Security"], ["seo", "SEO"], ["leftovers", "Vibe-coded leftovers"], ["forms", "Forms & CTA"], ["technical", "Technical"], ["other", "Additional findings"]] as const;
 const displayCheck = (value?: { state?: string; value?: number | string }) => value?.state === "checked" && value.value !== undefined ? value.value : "Unavailable";
@@ -18,6 +20,9 @@ const countLabel = (counts?: SectionCount) => {
   const parts = (["critical", "high", "medium", "low"] as const).filter((level) => counts[level]).map((level) => `${counts[level]} ${level}`);
   return `${counts.total} finding${counts.total === 1 ? "" : "s"} · ${parts.join(" · ")}`;
 };
+const crawlerPolicyLabels: Record<AiCrawlerReport["policies"][number]["policy"], string> = { blocked: "Blocked by matching rule", allowed: "Allowed by matching rule", no_matching_rule: "No matching rule", unknown: "Unknown" };
+const preferenceLabels: Record<AiCrawlerReport["preferences"][number]["status"], string> = { blocked: "Disallowed for this path", allowed: "Allowed for this path", not_declared: "No matching declaration", unknown: "Unknown" };
+const priorityLabels: Record<Finding["severity"], string> = { critical: "P1", high: "P2", medium: "P3", low: "P4" };
 const checkLabels: Record<string, string> = {
   https: "HTTPS enforced", tlsCertificate: "Valid TLS certificate", httpToHttps: "HTTP redirects to HTTPS", contentSecurityPolicy: "CSP", strictTransportSecurity: "HSTS", frameProtection: "Frame protection", contentTypeOptions: "Content type protection", referrerPolicy: "Referrer policy", permissionsPolicy: "Permissions policy",
   exposedFiles: "No exposed files", frontendSecrets: "No secrets in bundles", title: "Page title", description: "Meta description", h1Count: "Single H1", headingOrder: "Heading order", canonical: "Canonical URL", metaRobots: "Robots meta", sitemap: "Sitemap", jsonLd: "JSON-LD", imageAltCoverage: "Image alt coverage", ogTitle: "Open Graph title", ogDescription: "Open Graph description", twitterCard: "Twitter card", formCount: "Forms inspected", primaryCtaTargets: "Primary CTA targets", consoleErrors: "No console errors",
@@ -38,16 +43,9 @@ const passValue = (key: string, check?: MetricCheck) => {
   return typeof check.value === "string" && /present|secure|in order|redirects to https/i.test(check.value);
 };
 
-const sectionCategory: Record<string, string> = { design: "design_brand", security: "security", seo: "technical", leftovers: "technical", forms: "conversion", technical: "technical" };
-const categoryCheckKeys: Record<string, string[]> = {
-  clarity: ["title", "description", "h1Count", "headingOrder"],
-  conversion: ["primaryCtaTargets", "mobileOverflow", "formCount"],
-  design_brand: ["designContrastFailures"],
-  trust: ["proofSignals", "pricing", "faq", "contact", "ogTitle", "ogDescription", "twitterCard"],
-  technical: ["status", "redirects", "sitemap", "imageAltCoverage", "pageSpeedMobile", "pageSpeedDesktop", "lighthouseMobileAccessibility", "lighthouseDesktopAccessibility", "lighthouseMobileBestPractices", "lighthouseDesktopBestPractices", "lighthouseMobileSeo", "lighthouseDesktopSeo", "consoleErrors"],
-  security: ["https", "tlsCertificate", "httpToHttps", "contentSecurityPolicy", "strictTransportSecurity", "frameProtection", "contentTypeOptions", "referrerPolicy", "permissionsPolicy", "exposedFiles", "frontendSecrets", "mixedContent", "cookieIssues", "corsWildcardRoutes"],
-};
-const unknownCheckNames: Record<string, string> = { pageSpeedMobile: "mobile Lighthouse performance", pageSpeedDesktop: "desktop Lighthouse performance", lighthouseMobileAccessibility: "mobile accessibility", lighthouseDesktopAccessibility: "desktop accessibility", lighthouseMobileBestPractices: "mobile best practices", lighthouseDesktopBestPractices: "desktop best practices", lighthouseMobileSeo: "mobile Lighthouse SEO", lighthouseDesktopSeo: "desktop Lighthouse SEO", designContrastFailures: "text contrast review", primaryCtaTargets: "primary action destinations", mobileOverflow: "mobile fit", title: "page title", description: "meta description", h1Count: "heading structure", headingOrder: "heading order", proofSignals: "proof signals", pricing: "pricing information", faq: "FAQ", contact: "contact path", ogTitle: "share title", ogDescription: "share description", twitterCard: "X card metadata", status: "page response", redirects: "redirect chain", sitemap: "sitemap.xml", imageAltCoverage: "image descriptions", consoleErrors: "browser errors", https: "HTTPS", tlsCertificate: "TLS certificate", httpToHttps: "HTTPS redirect", contentSecurityPolicy: "CSP", strictTransportSecurity: "HSTS", frameProtection: "frame protection", contentTypeOptions: "content type protection", referrerPolicy: "referrer policy", permissionsPolicy: "permissions policy", exposedFiles: "exposed files", frontendSecrets: "frontend secrets", mixedContent: "mixed content", cookieIssues: "cookie attributes", corsWildcardRoutes: "CORS policy", formCount: "forms" };
+const sectionCategory: Record<string, Category> = { design: "design_brand", security: "security", seo: "seo_aeo", leftovers: "technical", forms: "conversion", technical: "technical" };
+const categoryCheckKeys = CATEGORY_CHECKS;
+const unknownCheckNames: Record<string, string> = { pageSpeedMobile: "mobile Lighthouse performance", pageSpeedDesktop: "desktop Lighthouse performance", lighthouseMobileAccessibility: "mobile accessibility", lighthouseDesktopAccessibility: "desktop accessibility", lighthouseMobileBestPractices: "mobile best practices", lighthouseDesktopBestPractices: "desktop best practices", lighthouseMobileSeo: "mobile Lighthouse SEO", lighthouseDesktopSeo: "desktop Lighthouse SEO", designContrastFailures: "text contrast review", primaryCtaTargets: "primary action destinations", mobileOverflow: "mobile fit", title: "page title", description: "meta description", h1Count: "heading structure", headingOrder: "heading order", proofSignals: "proof signals", pricing: "pricing information", faq: "FAQ", contact: "contact path", ogTitle: "share title", ogDescription: "share description", twitterCard: "X card metadata", status: "page response", redirects: "redirect chain", sitemap: "sitemap.xml", imageAltCoverage: "image descriptions", consoleErrors: "browser errors", https: "HTTPS", tlsCertificate: "TLS certificate", httpToHttps: "HTTPS redirect", contentSecurityPolicy: "CSP", strictTransportSecurity: "HSTS", frameProtection: "frame protection", contentTypeOptions: "content type protection", referrerPolicy: "referrer policy", permissionsPolicy: "permissions policy", exposedFiles: "exposed files", frontendSecrets: "frontend secrets", mixedContent: "mixed content", cookieIssues: "cookie attributes", corsWildcardRoutes: "CORS policy", formCount: "forms", contentReview: "content and clarity review", designReview: "visual design review" };
 const securityCodes: Record<string, string> = { https: "SEC-01", tlsCertificate: "SEC-02", httpToHttps: "SEC-03", contentSecurityPolicy: "SEC-04", strictTransportSecurity: "SEC-05", frameProtection: "SEC-06", contentTypeOptions: "SEC-07", referrerPolicy: "SEC-08", permissionsPolicy: "SEC-09", exposedFiles: "SEC-10", frontendSecrets: "SEC-11", mixedContent: "SEC-12", cookieIssues: "SEC-13", corsWildcardRoutes: "SEC-14" };
 const securityOrder = ["https", "tlsCertificate", "httpToHttps", "contentSecurityPolicy", "strictTransportSecurity", "frameProtection", "contentTypeOptions", "referrerPolicy", "permissionsPolicy", "exposedFiles", "frontendSecrets", "mixedContent", "cookieIssues", "corsWildcardRoutes"];
 const recommendedHeaders = "Content-Security-Policy: default-src 'self'; frame-ancestors 'none'\nStrict-Transport-Security: max-age=31536000; includeSubDomains\nX-Content-Type-Options: nosniff\nReferrer-Policy: strict-origin-when-cross-origin\nPermissions-Policy: camera=(), microphone=(), geolocation=()\nX-Frame-Options: DENY";
@@ -66,7 +64,7 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
   const lighthouseUnavailable = !lighthouse || [...Object.values(lighthouse)].every((metric) => metric.state === "unknown");
   const lighthouseHasUnknown = !lighthouse || Object.values(lighthouse).some((metric) => metric.state === "unknown");
   const checkLedger = getCheckLedger(scan.checks, scan.findings);
-  const ledgerCounts = checkLedger.reduce((counts, row) => ({ ...counts, [row.status]: counts[row.status] + 1 }), { pass: 0, issue: 0, unknown: 0, measured: 0 });
+  const ledgerCounts = checkLedger.reduce<Record<CheckStatus, number>>((counts, row) => ({ ...counts, [row.status]: counts[row.status] + 1 }), { pass: 0, issue: 0, review: 0, unknown: 0, not_applicable: 0, measured: 0 });
   async function retryLighthouse() { setRetrying(true); setRetryFailed(false); const ok = await onRetryLighthouse(); setRetrying(false); setRetryFailed(!ok); }
 
   return <>
@@ -82,6 +80,15 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
       </GlassCard>
     </section>
 
+    {scan.aiCrawlerReport && <section className="wrap depth-section ai-crawler-section" aria-labelledby="ai-crawler-title">
+      <div className="report-section-title"><h2 id="ai-crawler-title">AI crawlers.</h2><span className="mono">ROBOTS.TXT · NOT SCORED</span></div>
+      <p className="coverage-note">Policy read for <strong>{scan.aiCrawlerReport.robotsUrl ?? "robots.txt"}</strong> and the scanned path. This is not a request made as any listed bot.</p>
+      {scan.aiCrawlerReport.state === "unknown" && <p className="coverage-note">robots.txt could not be confirmed; crawler policies remain unknown.</p>}
+      <div className="ai-crawler-list">{scan.aiCrawlerReport.policies.map((bot) => <article className={`ai-crawler-row ai-crawler-row--${bot.policy}`} key={bot.userAgent}><div className="ai-crawler-title"><strong>{bot.name}</strong><span className="mono">{crawlerPolicyLabels[bot.policy]}</span></div><p className="mono">{bot.userAgent} · {bot.purpose}</p><p>{bot.matchedRules.length ? bot.matchedRules.map((rule) => `${rule.directive}: ${rule.path}`).join(" · ") : "No matching robots.txt directive for this path."}</p></article>)}</div>
+      <div className="ai-data-use"><h3>Training and data-use preference signals</h3><p>Shown separately from the score. A robots.txt declaration is a preference signal, not proof that a provider honors it or how it uses data.</p><div className="ai-crawler-list">{scan.aiCrawlerReport.preferences.map((preference) => <article className="ai-crawler-row" key={preference.signal}><div className="ai-crawler-title"><strong>{preference.label}</strong><span className="mono">{preferenceLabels[preference.status]}</span></div><p className="mono">{preference.signal}{preference.matchedRules.length ? ` · ${preference.matchedRules.map((rule) => `${rule.directive}: ${rule.path}`).join(" · ")}` : " · no matching declaration"}</p></article>)}</div></div>
+      <p className="coverage-note">{scan.aiCrawlerReport.note}</p>
+    </section>}
+
     {sections.map(([key, title]) => {
       const allFindings = scan.findings?.filter((finding) => finding.section === key) ?? [];
       const fullFindings = paidFindings?.filter((finding) => (finding.section ?? "other") === key) ?? [];
@@ -91,12 +98,14 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
       if (!allFindings.length && !passed.length && !hasDesignMetrics) return null;
       const counts = scan.findingCounts?.[key];
       const category = sectionCategory[key];
-      const unknownChecks = category ? (categoryCheckKeys[category] ?? []).filter((name) => { const check = scan.checks?.[name]; return !check || check.state !== "checked"; }).map((name) => unknownCheckNames[name] ?? name) : [];
+      const unknownChecks = category ? categoryCheckKeys[category].filter((name) => !scan.checks?.[name] || scan.checks[name].state === "unknown").map((name) => unknownCheckNames[name] ?? name) : [];
+      const notApplicableChecks = category ? categoryCheckKeys[category].filter((name) => scan.checks?.[name]?.state === "not_applicable").map((name) => unknownCheckNames[name] ?? name) : [];
       const categoryScore = category ? scan.categoryScores?.[category] : undefined;
-      const scoreCapped = !allFindings.length && unknownChecks.length > 0 && typeof categoryScore === "number" && categoryScore < 100;
+      const categoryCoverage = category ? scan.categoryCoverage?.[category] : undefined;
+      const scoreCapped = !allFindings.length && typeof categoryScore === "number" && categoryScore < 100 && (categoryCoverage !== undefined ? categoryCoverage < 1 : unknownChecks.length > 0);
       return <section className="wrap depth-section" aria-labelledby={`${key}-title`} key={key}>
         <div className="report-section-title"><h2 id={`${key}-title`}>{title}.</h2><span className="mono">{counts?.total ? countLabel(counts).toUpperCase() : "PASSED CHECKS"}</span></div>
-        {scoreCapped && <p className="coverage-note section-coverage">No issues found here — the score sits at {categoryScore} because {unknownChecks.length === 1 ? "one check could" : `${unknownChecks.length} checks could`} not be confirmed: {unknownChecks.join(", ")}. Unconfirmed checks don&apos;t earn points.</p>}
+        {scoreCapped && <p className="coverage-note section-coverage">No issues found here — the score sits at {categoryScore}. {unknownChecks.length > 0 && <>Unconfirmed checks: {unknownChecks.join(", ")}. </>}{notApplicableChecks.length > 0 && <>Excluded as not applicable: {notApplicableChecks.join(", ")}. </>}Unconfirmed checks don&apos;t earn points.</p>}
         {key === "design" && scan.designReview?.state === "checked" && scan.designReview.dimensions && <div className="design-dimensions">{[["Hierarchy", "visualHierarchy"], ["Type", "typography"], ["Spacing", "spacingRhythm"], ["Palette", "paletteContrast"], ["Brand", "brandConsistency"], ["Generic signals", "genericSignals"]].map(([label, dimension]) => <div key={dimension}><span className="mono">{label}</span><strong className="mono">{scan.designReview?.dimensions?.[dimension] ?? "—"}</strong></div>)}</div>}
         {key === "design" && <div className="design-dimensions"><div><span className="mono">Font families</span><strong className="mono">{displayCheck(scan.checks?.designFontFamilies)}</strong></div><div><span className="mono">Distinct colors</span><strong className="mono">{displayCheck(scan.checks?.designDistinctColors)}</strong></div><div><span className="mono">WCAG failures</span><strong className="mono">{displayCheck(scan.checks?.designContrastFailures)}</strong></div></div>}
         {key === "security" && <EvidenceRows rows={securityOrder.map((name) => ({ label: `${securityCodes[name]} · ${checkLabels[name] ?? name}`, value: displayCheck(scan.checks?.[name]), ok: passValue(name, scan.checks?.[name]) }))} />}
@@ -110,7 +119,7 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
           const full = fullFindings.find((finding) => finding.id === summary.id);
           const finding = full ?? summary;
           const anchorId = (scan.findings ?? []).slice(0, 3).some((item) => item.id === finding.id) ? undefined : `finding-${finding.id}`;
-          return <GlassCard as="article" id={anchorId} className={`depth-finding severity-card severity-${finding.severity}`} shellClassName="locked-finding-glass-shell" key={summary.id}><span className="mono finding-index">{finding.code ?? String(markerNumber).padStart(2, "0")}</span><span className={`mono finding-meta severity-${finding.severity}`}>{finding.severity.toUpperCase()} · {finding.category.toUpperCase()}</span><h3>{finding.title}</h3><p>{finding.why_it_matters}</p>
+          return <GlassCard as="article" id={anchorId} className={`depth-finding severity-card severity-${finding.severity}`} shellClassName="locked-finding-glass-shell" key={summary.id}><span className="mono finding-index">{finding.code ?? String(markerNumber).padStart(2, "0")}</span><span className={`mono finding-meta severity-${finding.severity}`}>{finding.severity.toUpperCase()} · {finding.category.toUpperCase()} · {priorityLabels[finding.severity]} · −{SEVERITY_PENALTY[finding.severity]} RULE POINTS</span><h3>{finding.title}</h3><p><strong>Why it matters:</strong> {finding.why_it_matters}</p>
             {hasPaid ? <><p><strong>Evidence:</strong> {full?.evidence}</p><p><strong>Fix:</strong> {full?.fix}</p></> : <div className="locked-detail"><p><strong>Evidence:</strong> {finding.evidence}</p><p className="locked-fix"><strong>Fix:</strong> <a href="#unlock">Included in the full report — ${PRICE_FIX_PROMPT_USD}</a></p></div>}
           </GlassCard>;
         })}

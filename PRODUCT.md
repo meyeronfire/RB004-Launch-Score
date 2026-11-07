@@ -24,10 +24,10 @@ The launch score for vibe-coded apps. Conversion and launch readiness first, tec
 
 ## Capabilities and Constraints
 
-- No account for the free overall score, four categories, top three issues, and share link.
+- No account for the free overall score, seven categories, top three issues, and share link.
 - $12 one-time Fix Prompt per URL includes full findings, rewritten copy, and tool-specific prompts.
 - Future $29 re-check remains disabled.
-- Category weights: Clarity 35, Conversion 30, Trust 15, Technical 20. Code computes scores; a model supplies findings only.
+- Category weights: Clarity 15, Conversion 25, Design & Brand 15, Trust 10, Technical 15, Security 10, SEO/AEO 10. Scores use deterministic checks, recorded evidence, and explicitly identified review assessments; unavailable inputs remain unknown.
 - Real pipeline progress, desktop/mobile capture, deterministic scoring, safe public-network requests, capped scans, 24-hour caching.
 - Unknown measurements must be identified; no invented evidence, proof, usage figures, or metrics.
 - Payment unlock is verified server-side and idempotent. Paid material stays out of public responses.

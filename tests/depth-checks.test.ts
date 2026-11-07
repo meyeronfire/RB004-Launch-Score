@@ -53,7 +53,7 @@ describe("security depth checks", () => {
   it("includes stack-aware security and SEO snippets in the paid fix prompt", () => {
     const prompt = promptVariants({ url: "https://site.test/", title: "Launch", stack: ["Next.js"], copyDrafts: emptyDrafts(), findings: [
       makeFinding({ section: "security", category: "security", severity: "high", title: "Missing CSP", why_it_matters: "Headers matter.", evidence: "CSP was missing.", fix: "Set CSP." }),
-      makeFinding({ section: "seo", category: "technical", severity: "medium", title: "Missing canonical", why_it_matters: "Canonical matters.", evidence: "None found.", fix: "Add canonical." }),
+      makeFinding({ section: "seo", category: "seo_aeo", severity: "medium", title: "Missing canonical", why_it_matters: "Canonical matters.", evidence: "None found.", fix: "Add canonical." }),
     ] }).Codex;
     expect(prompt).toContain("async headers()");
     expect(prompt).toContain("export const metadata");

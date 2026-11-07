@@ -1,8 +1,8 @@
 import { claimScopedCooldown, rateLimit } from "@/lib/rate-limit";
 import { psiMetrics } from "@/lib/scanner";
 import { publicScan, readScan, updateScan } from "@/lib/store";
-import { scoreFindings } from "@/lib/score";
-import type { LighthouseStrategy, MetricCheck } from "@/lib/types";
+import { scoreLighthouseAudit } from "@/lib/lighthouse-scoring";
+import type { LighthouseStrategy } from "@/lib/types";
 
 const inFlight = new Set<string>();
 
@@ -34,12 +34,9 @@ export async function POST(request: Request, context: RouteContext<"/api/scans/[
     if (fresh.every((metric) => metric.state === "unknown")) return Response.json({ report: publicScan(current), unavailable: true }, { headers: { "Cache-Control": "no-store" }, status: 503 });
     const merge = (incoming: LighthouseStrategy, existing?: LighthouseStrategy): LighthouseStrategy => Object.fromEntries(Object.entries(incoming).map(([key, metric]) => [key, metric.state === "checked" ? metric : existing?.[key as keyof LighthouseStrategy] ?? metric])) as LighthouseStrategy;
     const mobile = merge(freshMobile, current.lighthouse?.mobile); const desktop = merge(freshDesktop, current.lighthouse?.desktop);
-    const lighthouseScores = [mobile.performance, mobile.accessibility, mobile.bestPractices, mobile.seo, desktop.performance, desktop.accessibility, desktop.bestPractices, desktop.seo].flatMap((metric: MetricCheck) => metric.state === "checked" && typeof metric.value === "number" ? [metric.value] : []);
-    const technicalCoverage = 0.9 + 0.1 * (lighthouseScores.length / 8);
     const checks = { ...(current.checks ?? {}), pageSpeedMobile: mobile.performance, pageSpeedDesktop: desktop.performance, lighthouseMobileAccessibility: mobile.accessibility, lighthouseDesktopAccessibility: desktop.accessibility, lighthouseMobileBestPractices: mobile.bestPractices, lighthouseDesktopBestPractices: desktop.bestPractices, lighthouseMobileSeo: mobile.seo, lighthouseDesktopSeo: desktop.seo, lcpMobile: mobile.lcp, clsMobile: mobile.cls, inpTbtMobile: mobile.inpTbt, lcpDesktop: desktop.lcp, clsDesktop: desktop.cls, inpTbtDesktop: desktop.inpTbt };
-    const categoryCoverage = { ...(current.categoryCoverage ?? {}), technical: technicalCoverage };
-    const scored = scoreFindings(current.findings ?? [], categoryCoverage, lighthouseScores);
-    const next = await updateScan(id, (scan) => ({ ...scan, lighthouse: { mobile, desktop, source: "via Google PageSpeed Insights" }, checks, categoryCoverage, score: scored.score, categoryScores: scored.categoryScores, updatedAt: new Date().toISOString() }));
+    const scored = scoreLighthouseAudit({ findings: current.findings ?? [], checks, mobile, desktop, designReview: current.designReview });
+    const next = await updateScan(id, (scan) => ({ ...scan, lighthouse: { mobile, desktop, source: "via Google PageSpeed Insights" }, checks, categoryCoverage: scored.categoryCoverage, score: scored.score, categoryScores: scored.categoryScores, scoreBreakdown: scored.scoreBreakdown, scoringVersion: 3, updatedAt: new Date().toISOString() }));
     if (!next) return Response.json({ error: "This report could not be found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     const unavailable = [...Object.values(mobile), ...Object.values(desktop)].every((metric) => metric.state === "unknown");
     return Response.json({ report: publicScan(next), unavailable }, { headers: { "Cache-Control": "no-store" }, status: unavailable ? 503 : 200 });

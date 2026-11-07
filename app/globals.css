@@ -552,7 +552,8 @@ button, input { font: inherit; }
 }
 
 /* Report audit additions */
-.category-rings { grid-column: 1 / 13; display: grid; grid-template-columns: repeat(6, minmax(68px, 1fr)); gap: 18px; margin-top: 44px; }
+.category-rings { grid-column: 1 / 13; display: grid; grid-template-columns: repeat(7, minmax(68px, 1fr)); gap: 18px; margin-top: 44px; }
+.category-legacy-note { grid-column: 1 / -1; margin: 0; font-size: 11px; }
 .category-ring { min-width: 0; display: grid; justify-items: center; gap: 4px; text-align: center; position: relative; }
 .category-ring svg { width: 64px; height: 64px; overflow: visible; transform: rotate(-90deg); }
 .category-ring-track, .category-ring-value { fill: none; stroke-width: 3; }
@@ -572,6 +573,25 @@ button, input { font: inherit; }
 .category-passed-group .passed-checks { padding: 0 0 12px; }
 .section-passed-group { max-width: 1000px; margin: 12px 0 22px; }
 .category-passed-group .passed-checks li { font-size: 10px; }
+.category-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 18px; margin-top: 30px; }
+.category-status-card { min-width: 0; padding-top: 10px; border-top: 1px solid var(--line); }
+.category-status-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.category-status-heading strong { font-size: 13px; font-weight: 520; }
+.category-status-heading .mono { color: var(--ink-soft); font-size: 11px; }
+.category-status-counts { display: flex; flex-wrap: wrap; gap: 5px 12px; color: var(--ink-faint); font-size: 10px; }
+.ai-crawler-section .coverage-note { max-width: 80ch; }
+.ai-crawler-list { max-width: 1000px; border-top: 1px solid var(--line); }
+.ai-crawler-row { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.ai-crawler-row p { margin: 5px 0 0; color: var(--ink-faint); font-size: 12px; overflow-wrap: anywhere; }
+.ai-crawler-title { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.ai-crawler-title strong { font-size: 15px; font-weight: 520; }
+.ai-crawler-title .mono { color: var(--ink-soft); font-size: 10px; text-align: right; }
+.ai-crawler-row--blocked .ai-crawler-title .mono { color: var(--accent); }
+.ai-data-use { max-width: 1000px; margin-top: 36px; }
+.ai-data-use h3 { margin: 0 0 8px; font-size: clamp(18px, 2vw, 24px); font-weight: 520; letter-spacing: -.025em; }
+.ai-data-use > p { max-width: 75ch; margin: 0 0 16px; color: var(--ink-soft); font-size: 13px; }
+.check-ledger-status--review { color: var(--ink-soft) !important; }
+.check-ledger-status--not_applicable, .check-ledger-status--measured { color: var(--ink-faint) !important; }
 .scan-progress-ring { width: 72px; height: 72px; position: relative; margin-bottom: 24px; }
 .scan-progress-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .progress-ring-track, .progress-ring-value { fill: none; stroke-width: 1.5; }
