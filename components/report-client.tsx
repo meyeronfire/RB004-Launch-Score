@@ -46,27 +46,6 @@ function CategoryRing({ category, score }: { category: Category; score?: number 
   </div>;
 }
 
-function AnnotatedCapture({ scan }: { scan: FreeReport & { findings?: Finding[] } }) {
-  const capture = scan.annotatedCapture;
-  if (!capture?.desktopImage && !capture?.mobileImage && !capture?.desktopSegments?.length && !capture?.mobileSegments?.length) return null;
-  const items = scan.findings ?? [];
-  const figures = (["desktop", "mobile"] as const).flatMap((device) => {
-    const src = device === "desktop" ? capture.desktopImage : capture.mobileImage;
-    const size = device === "desktop" ? capture.desktopSize : capture.mobileSize;
-    const segments = device === "desktop" ? capture.desktopSegments : capture.mobileSegments;
-    if ((!src || !size) && !segments?.length) return [];
-    const renderMarkers = (segmentIndex?: number) => capture.markers.map((marker) => {
-      const point = marker[device]; const item = items.find((finding) => finding.id === marker.findingId);
-      if (!point || !item || point.segmentIndex !== segmentIndex) return null;
-      return <button className="finding-marker" type="button" key={`${device}-${marker.findingId}`} style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }} aria-label={`Finding ${marker.number}: ${item.title}. Jump to finding.`} onClick={() => document.getElementById(`finding-${marker.findingId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}>{marker.number}</button>;
-    });
-    return [<GlassCard as="figure" className="annotated-capture-card" shellClassName="annotated-capture-shell" key={device}>
-      <div className="annotated-capture-viewport">{src && size ? <div className="annotated-capture-canvas"><Image src={src} alt={`${device} full-page rendering of ${scan.domain}`} width={size.width} height={size.height} unoptimized loading="lazy"/>{renderMarkers()}</div> : segments?.map((segment, index) => <div className="annotated-capture-canvas" key={`${device}-${index}`}><Image src={segment.image} alt={`${device} page capture ${index + 1} of ${segments.length} for ${scan.domain}`} width={segment.width} height={segment.height} unoptimized loading="lazy"/>{renderMarkers(index)}</div>)}</div><figcaption className="mono">{device.toUpperCase()} · MARKERS JUMP TO FINDINGS</figcaption>
-    </GlassCard>];
-  });
-  return <section className="wrap capture-section annotated-capture-section" aria-label="Annotated page screenshots"><div className="report-section-title"><h2>Findings, in context.</h2><span className="mono">SELECT A PINK MARKER TO JUMP TO ITS FINDING</span></div><div className="capture-grid">{figures}</div></section>;
-}
-
 export function ReportClient({ initial }: { initial: FreeReport }) {
   const [scan, setScan] = useState(initial as FreeReport & { findings?: Finding[]; lockedTitles?: string[]; lockedCount?: number });
   const [paidData, setPaidData] = useState<{ available: boolean; findings: Finding[]; prompts: Record<string, string>; copyDrafts: { status: string; headlines: string[]; subheadline: string; cta: string; faq: string; metaTitle: string; metaDescription: string } } | undefined>();
@@ -262,10 +241,10 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
       </section>}
       <TechnicalReportSections scan={{ ...scan, checkoutAvailable } as FreeReport & { findingCounts?: Record<string, { total: number; critical: number; high: number; medium: number; low: number }>; shareImageAvailable?: boolean; checkoutAvailable?: boolean; findings?: Finding[] }} paidFindings={paidData?.findings} onRetryLighthouse={retryLighthouse} onUnlock={(section) => void checkout(section)} checkoutPending={checkoutPending} checkoutMessage={checkoutMessage} checkoutSection={checkoutSection}/>
       <div className="wrap share-row"><span className="mono">SHARE YOUR SCORE</span><button type="button" onClick={() => openShare("x")}>X</button><button type="button" onClick={() => openShare("linkedin")}>LinkedIn</button><button type="button" onClick={copyLink}>Copy link</button><span role="status">{shareStatus}</span></div>
-      {scan.annotatedCapture ? <AnnotatedCapture scan={scan as FreeReport & { findings?: Finding[] }}/> : <section className="wrap capture-section" aria-label="Rendered page previews">
+      <section className="wrap capture-section" aria-label="Rendered page previews">
         <div className="report-section-title"><h2>Your page, rendered.</h2><span className="mono">DESKTOP 1440 × 900 / MOBILE 390 × 844</span></div>
         <div className="capture-grid">{scan.desktopImage && <figure><Image src={scan.desktopImage} alt={`Desktop rendering of ${scan.domain}`} width={1440} height={900} unoptimized loading="eager"/><figcaption className="mono">DESKTOP · 1440 × 900</figcaption></figure>}{scan.mobileImage && <figure><Image src={scan.mobileImage} alt={`Mobile rendering of ${scan.domain}`} width={390} height={844} unoptimized loading="eager"/><figcaption className="mono">MOBILE · 390 × 844</figcaption></figure>}</div>
-      </section>}
+      </section>
       {paidStatus && <section className="wrap paid-report"><p className="mono inline-status" role="status">{paidStatus}</p></section>}
       {scan.id !== "example" && <section className="wrap email-section"><div><h2>Keep your report close.</h2><p>Optional. Save your email with this report; a report link will be sent if email delivery is available.</p></div><div className="email-actions"><form action={async (formData) => submitLead(formData)}><label htmlFor="lead-email" className="sr-only">Email address</label><input type="email" required maxLength={254} name="email" id="lead-email" autoComplete="email" placeholder="you@example.com"/><button type="submit">Save email & send</button><span role="status">{emailStatus}</span></form>{scan.paidAvailable && !paidData && <form action={async (formData) => requestAccess(formData)}><label htmlFor="access-email" className="sr-only">Email used at checkout</label><input type="email" required maxLength={254} name="email" id="access-email" autoComplete="email" placeholder="Email used at checkout"/><button type="submit">Resend paid report link</button><span role="status">{accessStatus}</span></form>}</div></section>}
       {paidData && <section className="wrap paid-report"><div className="report-section-title"><h2>Fix your highest-impact issues.</h2><span className="mono">FIX PROMPT · UNLOCKED</span></div>{scan.paidRescanAvailable && <p className="mono paid-rescan-note">Your purchase includes unlimited re-scans of this URL for seven days. <Link href={`/?url=${encodeURIComponent(scan.url)}`}>Rescan this URL →</Link></p>}<div className="report-copy"><span className="mono">COPY DRAFT STATUS</span><p>{paidData.copyDrafts.status}</p><div className="copy-drafts"><div><span className="mono">HEADLINE OPTIONS</span>{paidData.copyDrafts.headlines.map((line, i) => <p key={i}>{line}</p>)}</div><div><span className="mono">SUBHEADLINE</span><p>{paidData.copyDrafts.subheadline}</p></div><div><span className="mono">PRIMARY CTA</span><p>{paidData.copyDrafts.cta}</p></div><div><span className="mono">FAQ DRAFT</span><p>{paidData.copyDrafts.faq}</p></div><div><span className="mono">META TITLE & DESCRIPTION</span><p>{paidData.copyDrafts.metaTitle}</p><p>{paidData.copyDrafts.metaDescription}</p></div></div></div><div className="tool-tabs" role="tablist" aria-label="Fix prompt by tool" onKeyDown={(event) => {

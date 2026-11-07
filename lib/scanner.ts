@@ -227,14 +227,6 @@ function findingCapturePoint(item: Finding, anchors: VisualAnchor[] | undefined,
   return segment ? { x: Math.max(0, Math.min(1, centerX / segment.width)), y: Math.max(0, Math.min(1, (centerY - segment.top) / segment.height)), segmentIndex } : undefined;
 }
 
-function annotatedCapture(findings: Finding[], desktop: { fullPageScreenshot?: string; fullPageSize?: { width: number; height: number }; screenshotSegments?: Array<SegmentInfo & { image: string }>; snapshot: { visualAnchors?: VisualAnchor[] } }, mobile: { fullPageScreenshot?: string; fullPageSize?: { width: number; height: number }; screenshotSegments?: Array<SegmentInfo & { image: string }>; snapshot: { visualAnchors?: VisualAnchor[] } }) {
-  const markers = findings.map((item, index) => ({ findingId: item.id, number: index + 1,
-    desktop: findingCapturePoint(item, desktop.snapshot.visualAnchors, desktop.fullPageSize, desktop.screenshotSegments),
-    mobile: findingCapturePoint(item, mobile.snapshot.visualAnchors, mobile.fullPageSize, mobile.screenshotSegments),
-  }));
-  return { desktopImage: desktop.fullPageScreenshot, mobileImage: mobile.fullPageScreenshot, desktopSize: desktop.fullPageSize, mobileSize: mobile.fullPageSize, desktopSegments: desktop.screenshotSegments, mobileSegments: mobile.screenshotSegments, markers };
-}
-
 export function deterministicFindings(input: {
   page: { title: string; h1: string; description: string; viewport: string; lang: string; imageCount: number; imageAltCount: number; ctas: Array<{ visible: boolean; top: number; height: number; width: number; text: string }>; deadButtons: number; placeholders: string[]; hasProof: boolean; hasPricing: boolean; hasFaq: boolean; hasContact: boolean };
   mobile: { bodyWidth: number; viewportWidth: number; ctas: Array<{ visible: boolean; top: number; height: number; width: number; text: string }> };
@@ -594,8 +586,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     const hints = stackHints(html);
     const prompts = promptVariants({ url: finalUrl.toString(), title: snap.title, stack: hints, findings: ranked, copyDrafts });
     const paidPayload = { available: copyDrafts.headlines.length === 3, paidModelReady: Boolean(current.paid && copyDrafts.headlines.length === 3), findings: ranked, prompts, copyDrafts, model: scanModel };
-    const capture = annotatedCapture(ranked, desktop, mobile);
-    await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), annotatedCapture: capture, scoreBreakdown,
+    await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), scoreBreakdown,
       checks: checkResults, categoryCoverage, lighthouse: { mobile: psi, desktop: psiDesktop, source: "via Google PageSpeed Insights" }, sharePreview: { title: snap.ogTitle || snap.title, description: snap.ogDescription || snap.description }, shareImageUrl,
       desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 2, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
       stackHints: hints, contentReview: contentReview.status, paidPayload }, leaseToken);
