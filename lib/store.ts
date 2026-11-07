@@ -108,7 +108,7 @@ export async function hasLiveWorker() {
 
 export function publicScan(scan: ScanRecord) {
   const safe = { ...scan };
-  delete safe.paidPayload; delete safe.leadEmail; delete safe.paid; delete safe.cacheKey; delete safe.leaseToken; delete safe.shareImageUrl; delete safe.paidRescanExpiresAt;
+  delete safe.paidPayload; delete safe.leadEmail; delete safe.paid; delete safe.cacheKey; delete safe.leaseToken; delete safe.shareImageUrl; delete safe.paidRescanExpiresAt; delete safe.annotatedCapture;
   const sections = ["design", "security", "seo", "leftovers", "forms", "technical", "other"] as const;
   const findingCounts = Object.fromEntries(sections.map((section) => {
     const items = (scan.findings ?? []).filter((item) => (item.section ?? "other") === section);
