@@ -468,10 +468,6 @@ button, input { font: inherit; }
 .depth-finding { max-width: 1000px; padding: clamp(24px, 3vw, 40px); border-top: 0; }
 .depth-finding:last-child { border-bottom: 0; }
 .depth-finding .finding-index { margin-right: 12px; }
-.locked-finding-glass-shell .glass-card::before { background: linear-gradient(135deg, rgba(255,255,255,.18), rgba(255,255,255,.04) 60%); }
-.depth-finding { box-shadow: inset 3px 0 0 rgba(255,45,139,.6); }
-.depth-finding.severity-low { box-shadow: inset 3px 0 0 rgba(255,255,255,.22); }
-.depth-finding.severity-medium { box-shadow: inset 3px 0 0 rgba(255,45,139,.4); }
 .depth-finding h3 { margin: 9px 0; font-size: clamp(22px, 2.8vw, 34px); line-height: 1.1; letter-spacing: -.03em; font-weight: 520; }
 .depth-finding p { max-width: 70ch; color: var(--ink-soft); margin: 8px 0 0; font-size: 14px; }
 .depth-finding strong { color: var(--ink); font-weight: 500; }
