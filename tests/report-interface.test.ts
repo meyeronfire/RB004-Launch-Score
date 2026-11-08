@@ -89,7 +89,7 @@ describe("report presentation", () => {
     expect(html).toContain("Confirmed issue");
     expect(html).toContain("Why it matters");
     expect(html).toContain("Observed");
-    expect(html).toContain("Technical detail and scoring");
+    expect(html).toContain("Show technical details &amp; scoring");
     expect(html).not.toContain("PRIVATE_FIX_SENTINEL");
     expect(renderToStaticMarkup(React.createElement(ReportFinding, { finding, index: 0, fix: finding.fix }))).toContain("PRIVATE_FIX_SENTINEL");
   });
