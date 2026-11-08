@@ -2,11 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { RELEASE_CODE, PRICE_FIX_PROMPT_USD, PRODUCT_NAME } from "@/config/release";
 import { track } from "@/lib/analytics-client";
 import type { Finding } from "@/lib/types";
+import { categoryAccent } from "@/lib/report-visuals";
 import { TechnicalReportSections } from "@/components/technical-report-sections";
 import { GlassCard } from "@/components/glass-card";
 import { ScanForm } from "@/components/scan-form";
@@ -33,11 +34,13 @@ function CategoryRing({ category, score }: { category: Category; score?: number 
   const radius = 26; const circumference = 2 * Math.PI * radius; const value = typeof score === "number" ? score : undefined;
   const dash = circumference * (1 - (value ?? 0) / 100);
   const angle = -Math.PI / 2; const dotX = 32 + radius * Math.cos(angle); const dotY = 32 + radius * Math.sin(angle);
-  return <div className="category-ring" aria-label={`${labels[category]}: ${value === undefined ? "not available" : `${value} out of 100`}`}>
+  const accent = categoryAccent(category);
+  const ringId = `category-ring-${category}`;
+  return <div className="category-ring" data-category={category} style={{ "--category-accent": accent } as CSSProperties} aria-label={`${labels[category]}: ${value === undefined ? "not available" : `${value} out of 100`}`}>
     <svg viewBox="0 0 64 64" aria-hidden="true">
-      <defs><linearGradient id="category-ring-ink" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#ff2e7e"/><stop offset="100%" stopColor="#ff8fb4"/></linearGradient></defs>
+      <defs><linearGradient id={ringId} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor={accent}/><stop offset="100%" stopColor="#fff" stopOpacity=".7"/></linearGradient></defs>
       <circle className="category-ring-track" cx="32" cy="32" r={radius}/>
-      <circle className={`category-ring-value${value === undefined ? " dim" : ""}`} cx="32" cy="32" r={radius} strokeDasharray={`${circumference - dash} ${circumference}`} strokeDashoffset={0}/>
+      <circle className={`category-ring-value${value === undefined ? " dim" : ""}`} style={{ stroke: value === undefined ? "rgba(255,255,255,.18)" : `url(#category-ring-${category})` }} cx="32" cy="32" r={radius} strokeDasharray={`${circumference - dash} ${circumference}`} strokeDashoffset={0}/>
       {value !== undefined && value > 0 && <circle className="category-ring-dot" cx={dotX} cy={dotY} r="2.4"/>}
     </svg>
     <span className="mono">{value ?? "n/a"}</span><span className="category-ring-label">{labels[category]}</span>
@@ -212,8 +215,8 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         <div className="speed-insights" aria-label="Rendered speed insights">
           {speedTiles.map((tile) => <div key={tile.label}><span className="mono">{tile.label}</span><strong className={`mono${tile.good ? " good" : " bad"}`}>{tile.value}</strong></div>)}
         </div>
-        <div className="score-categories">{categoryOrder.map((key) => <div className="category-row" key={key}><span>{labels[key]}</span><div className="category-track" aria-hidden="true"><i style={{ width: `${scan.categoryScores?.[key] ?? 0}%` }}/></div><span className="mono category-score">{scan.categoryScores?.[key] ?? "n/a"}</span></div>)}</div>
-        <div className="category-status-grid" aria-label="Check coverage by category">{categoryOrder.map((key) => { const stats = categoryStats[key]; return <article className="category-status-card" key={key}><div className="category-status-heading"><strong>{labels[key]}</strong><span className="mono">{stats.score ?? "n/a"}/100</span></div><div className="category-status-counts mono"><span>{stats.pass} pass</span><span>{stats.issue} issue</span><span>{stats.review} review</span><span>{stats.unknown} unknown</span><span>{stats.not_applicable} N/A</span><span>{stats.measured} measured</span></div></article>; })}</div>
+        <div className="score-categories">{categoryOrder.map((key) => <div className="category-row" data-category={key} style={{ "--category-accent": categoryAccent(key) } as CSSProperties} key={key}><span>{labels[key]}</span><div className="category-track" aria-hidden="true"><i style={{ width: `${scan.categoryScores?.[key] ?? 0}%` }}/></div><span className="mono category-score">{scan.categoryScores?.[key] ?? "n/a"}</span></div>)}</div>
+        <div className="category-status-grid" aria-label="Check coverage by category">{categoryOrder.map((key) => { const stats = categoryStats[key]; return <article className="category-status-card" data-category={key} style={{ "--category-accent": categoryAccent(key) } as CSSProperties} key={key}><div className="category-status-heading"><strong>{labels[key]}</strong><span className="mono">{stats.score ?? "n/a"}/100</span></div><div className="category-status-counts mono"><span>{stats.pass} pass</span><span>{stats.issue} issue</span><span>{stats.review} review</span><span>{stats.unknown} unknown</span><span>{stats.not_applicable} N/A</span><span>{stats.measured} measured</span></div></article>; })}</div>
         {scan.scoreBreakdown && <details className="score-breakdown"><summary className="mono">Why this scored this way</summary>
           <div className="breakdown-grid">
             <div>
@@ -228,7 +231,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
           <p className="coverage-note">Scores are deterministic: each category starts from its assessment (default 100) and loses fixed rule points per finding (critical −22, high −13, medium −7, low −3), capped by confirmed evidence. Unknown checks stay unknown.</p>
         </details>}<div className="category-passed-groups">{categoryOrder.map((category) => { const passed = categoryChecks[category].filter((key) => scan.checks?.[key] && checkOutcome(key, scan.checks[key], findings) === true).map((key) => ({ key, label: checkNames[key] ?? getCheckLabel(key) })); if (!passed.length) return null; return <details className="category-passed-group" key={category}><summary className="mono">{labels[category]} · {passed.length} passed</summary><ul className="passed-checks">{passed.map(({ key, label }) => <li className="mono" key={key}><span aria-hidden="true">✓</span>{label}</li>)}</ul></details>; })}</div></section>
       {findings.length > 0 && <section className="wrap findings-section"><div className="report-section-title"><h2>Top fixes.</h2><span className="mono">TOP {Math.min(findings.length, 3)} FREE FINDINGS</span></div>
-        <div className="finding-list">{findings.slice(0, 3).map((item, index) => <GlassCard as="article" id={`finding-${item.id}`} className={`finding severity-card severity-${item.severity}`} shellClassName="finding-glass-shell" key={item.id}><span className="mono finding-index">0{index + 1}</span><div><span className={`mono finding-meta severity-${item.severity}`}>{item.code ? `${item.code} · ` : ""}{categoryLabel(item.category)} · {item.severity.toUpperCase()} · {priorityLabel[item.severity]} · −{ruleLoss[item.severity]} RULE POINTS</span><h3>{item.title}</h3><p><strong>Why it matters:</strong> {item.why_it_matters}</p><p className="finding-evidence"><strong>Evidence:</strong> {item.evidence}</p></div></GlassCard>)}</div>
+        <div className="finding-list">{findings.slice(0, 3).map((item, index) => <GlassCard as="article" id={`finding-${item.id}`} className={`finding severity-card severity-${item.severity}`} shellClassName="finding-glass-shell" style={{ "--category-accent": categoryAccent(item.category) } as CSSProperties} data-category={item.category} key={item.id}><span className="mono finding-index">0{index + 1}</span><div><span className={`mono finding-meta severity-${item.severity}`}>{item.code ? `${item.code} · ` : ""}{categoryLabel(item.category)} · {item.severity.toUpperCase()} · {priorityLabel[item.severity]} · −{ruleLoss[item.severity]} RULE POINTS</span><h3>{item.title}</h3><p><strong>Why it matters:</strong> {item.why_it_matters}</p><p className="finding-evidence"><strong>Evidence:</strong> {item.evidence}</p></div></GlassCard>)}</div>
         {Boolean(scan.lockedCount) && !paidData && <div className="locked-findings"><p className="mono">{scan.lockedCount} MORE FINDINGS{checkoutAvailable ? ` · FULL REPORT + FIX PROMPT $${PRICE_FIX_PROMPT_USD} ONCE` : ""}</p></div>}
       </section>}
       {scan.id !== "example" && !paidData && <section className="wrap report-unlock-offer" id="unlock" aria-label="Unlock the full report and Fix Prompt">

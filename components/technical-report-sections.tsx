@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { AiCrawlerReport, Category, Finding, LighthouseStrategy, LighthouseReport, MetricCheck } from "@/lib/types";
 import { CATEGORY_CHECKS } from "@/config/scoring";
 import { GlassCard } from "@/components/glass-card";
@@ -9,6 +9,7 @@ import { PRICE_FIX_PROMPT_USD } from "@/config/release";
 import { SHARE_FORMATS, type ShareFormat, type ShareVariant } from "@/lib/share-card";
 import { getCheckLedger, type CheckStatus } from "@/lib/report-artifacts";
 import { SEVERITY_PENALTY } from "@/lib/score";
+import { categoryAccent } from "@/lib/report-visuals";
 
 type SectionCount = { total: number; critical: number; high: number; medium: number; low: number };
 type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; aiCrawlerReport?: AiCrawlerReport; sharePreview?: { title: string; description: string }; findingCounts?: Record<string, SectionCount>; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; checkoutAvailable?: boolean; findings?: Finding[]; designReview?: { state: "checked" | "unknown"; dimensions?: Record<string, number>; score?: number }; categoryScores?: Record<string, number | undefined>; categoryCoverage?: Partial<Record<Category, number>>; scoringVersion?: number };
@@ -72,7 +73,7 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
   async function retryLighthouse() { setRetrying(true); setRetryFailed(false); const ok = await onRetryLighthouse(); setRetrying(false); setRetryFailed(!ok); }
 
   return <>
-    <section className="wrap depth-section lighthouse-section" aria-labelledby="lighthouse-title">
+    <section className="wrap depth-section lighthouse-section" data-category="technical" style={{ "--category-accent": categoryAccent("technical") } as CSSProperties} aria-labelledby="lighthouse-title">
       <div className="report-section-title"><h2 id="lighthouse-title">Lighthouse.</h2><div className="report-aside"><span className="mono">TECHNICAL · {countLabel(scan.findingCounts?.technical).toUpperCase()}</span><span className="mono">{scan.lighthouse?.source ?? "via Google PageSpeed Insights"}</span></div></div>
       <div className="lighthouse-toggle" role="group" aria-label="Lighthouse device strategy">{(["mobile", "desktop"] as const).map((name) => <button type="button" key={name} aria-pressed={strategy === name} className={strategy === name ? "active" : ""} onClick={() => setStrategy(name)}>{name}</button>)}</div>
       <GlassCard className="lighthouse-glass" shellClassName="lighthouse-glass-shell">
@@ -115,7 +116,7 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
       const categoryScore = category ? scan.categoryScores?.[category] : undefined;
       const categoryCoverage = category ? scan.categoryCoverage?.[category] : undefined;
       const scoreCapped = !allFindings.length && typeof categoryScore === "number" && categoryScore < 100 && (categoryCoverage !== undefined ? categoryCoverage < 1 : unknownChecks.length > 0);
-      return <section className="wrap depth-section" aria-labelledby={`${key}-title`} key={key}>
+      return <section className="wrap depth-section" data-category={category} style={category ? { "--category-accent": categoryAccent(category) } as CSSProperties : undefined} aria-labelledby={`${key}-title`} key={key}>
         <div className="report-section-title"><h2 id={`${key}-title`}>{title}.</h2><span className="mono">{counts?.total ? countLabel(counts).toUpperCase() : "PASSED CHECKS"}</span></div>
         {scoreCapped && <p className="coverage-note section-coverage">No issues found here — the score sits at {categoryScore}. {unknownChecks.length > 0 && <>Unconfirmed checks: {unknownChecks.join(", ")}. </>}{notApplicableChecks.length > 0 && <>Excluded as not applicable: {notApplicableChecks.join(", ")}. </>}Unconfirmed checks don&apos;t earn points.</p>}
         {key === "design" && scan.designReview?.state === "checked" && scan.designReview.dimensions && <div className="design-dimensions">{[["Hierarchy", "visualHierarchy"], ["Type", "typography"], ["Spacing", "spacingRhythm"], ["Palette", "paletteContrast"], ["Brand", "brandConsistency"], ["Generic signals", "genericSignals"]].map(([label, dimension]) => <div key={dimension}><span className="mono">{label}</span><strong className="mono">{scan.designReview?.dimensions?.[dimension] ?? "—"}</strong></div>)}</div>}
@@ -132,10 +133,10 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
           const finding = full ?? summary;
           const unlocked = Boolean(full);
           const anchorId = (scan.findings ?? []).slice(0, 3).some((item) => item.id === finding.id) ? undefined : `finding-${finding.id}`;
-          return <article id={anchorId} className={`depth-finding severity-card severity-${finding.severity}`} key={summary.id}>
+          return <article id={anchorId} data-category={finding.category} style={{ "--category-accent": categoryAccent(finding.category) } as CSSProperties} className={`depth-finding severity-card severity-${finding.severity}`} key={summary.id}>
             <div className="finding-meta-row"><div className="finding-meta-tags"><span className="mono finding-index">{finding.code ?? String(markerNumber).padStart(2, "0")}</span><span className="mono finding-status">Needs attention</span><span className="mono finding-category">{categoryLabels[finding.category]}</span><span className="mono finding-priority">Priority {priorityLabels[finding.severity]}</span></div><strong className="mono finding-rule-loss">−{SEVERITY_PENALTY[finding.severity]} rule points</strong></div>
             <h3>{finding.title}</h3>
-            <div className="finding-info-grid"><section><h4>Why this needs attention</h4><p>{finding.why_it_matters}</p></section><section><h4>Evidence recorded</h4><p>{summary.evidence ?? finding.evidence ?? "Evidence was not recorded for this finding."}</p></section></div>
+    <div className="finding-info-grid"><section><h4>Why this needs attention</h4><p>{finding.why_it_matters}</p></section><section><h4>Evidence recorded</h4><p>{summary.evidence ?? finding.evidence ?? "Evidence was not recorded for this finding."}</p></section></div>
             <div className="finding-correction-grid"><section><h4>Recommended correction</h4>{unlocked ? <p>{full?.fix ?? "No remediation was returned for this finding."}</p> : <p>Unlock the site-specific correction, implementation steps, and tool-ready prompt in the full report for ${PRICE_FIX_PROMPT_USD}.</p>}</section><section><h4>Priority</h4><p>{priorityLabels[finding.severity]} · {finding.severity.toUpperCase()} · {SEVERITY_PENALTY[finding.severity]} rule points at stake</p></section></div>
             {!unlocked && <p className="finding-unlock-link"><a href="#unlock">Unlock the site-specific correction — ${PRICE_FIX_PROMPT_USD}</a></p>}
           </article>;

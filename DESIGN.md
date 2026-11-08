@@ -9,6 +9,13 @@ colors:
   ink-faint: "rgba(255,255,255,.56)"
   accent: "#ff2e7e"
   accent-strong: "#e0186a"
+  category-clarity: "#f4c95d"
+  category-conversion: "#ff2e7e"
+  category-design-brand: "#b99aff"
+  category-trust: "#62d9be"
+  category-technical: "#70bdff"
+  category-security: "#ff745e"
+  category-seo-aeo: "#70df9b"
   separator: "rgba(255,255,255,.1)"
 typography:
   display:
@@ -98,7 +105,7 @@ components:
 
 **Creative North Star: "The Pinned Regular Basis Editorial World"**
 
-A black editorial canvas gives the page its structure through scale, whitespace, and fine horizontal rules. Inter Display carries both headlines and prose; Geist Mono identifies measurements, provenance, release information, and tool output. Hot pink marks the action or reading that matters.
+A black editorial canvas gives the page its structure through scale, whitespace, and fine horizontal rules. Inter Display carries both headlines and prose; Geist Mono identifies measurements, provenance, release information, and tool output. Hot pink remains the action color; category colors create consistent wayfinding across score and finding evidence.
 
 The score is the material signature: monochrome reflection bands clipped to large numerals, accompanied by a restrained pink marker. Supporting content remains flat and sparse. Rendered website captures retain their own source colors; those colors do not expand the RB004 interface palette.
 
@@ -111,12 +118,16 @@ The score is the material signature: monochrome reflection bands clipped to larg
 
 ## Colors
 
-The interface uses one hot pink accent against black and a controlled white hierarchy. The frontmatter records the applied reusable values; unused root declarations are not promoted into additional palette roles. Sidecar tonal ramps are synthesized OKLCH previews, not additional shipped interface colors; alpha colors keep their frontmatter values.
+The interface uses hot pink for actions against black, with a controlled white hierarchy and a limited category palette for report navigation. The frontmatter records applied reusable values; category colors are data roles, not decorative surfaces. Sidecar tonal ramps are synthesized OKLCH previews, not additional shipped interface colors; alpha colors keep their frontmatter values.
 
 ### Primary
 
-- **Hot Pink** (`accent`): submit and unlock actions, category bars, selected tool text, indices, focus, and the score marker.
+- **Hot Pink** (`accent`): submit and unlock actions, focused fields, and the score marker.
 - **Deep Hot Pink** (`accent-strong`): primary button hover.
+
+### Category Data Roles
+
+Use the category accent consistently for its report ring, score bar, finding label, and evidence section: clarity (`category-clarity`), conversion (`category-conversion`), design & brand (`category-design-brand`), trust (`category-trust`), technical (`category-technical`), security (`category-security`), and SEO/AEO (`category-seo-aeo`). Labels and scores remain visible so color is never the only signal.
 
 ### Neutral
 
@@ -129,7 +140,7 @@ The interface uses one hot pink accent against black and a controlled white hier
 
 ### Named Rules
 
-**The Single Accent Rule.** Use hot pink for primary actions, selected tools, category bars, indices, and focused fields; keep the surrounding interface monochrome.
+**The Action and Category Rule.** Reserve hot pink for actions and focus. Use the mapped category color only for data-linked rings, bars, finding labels, and section wayfinding; keep surfaces black and editorial.
 
 ## Typography
 
@@ -197,7 +208,7 @@ The example panel and prompt output use near-black fills without outlines or rou
 
 ### Score and Category Readings
 
-The chrome numeral uses the exact reflection sequence recorded in the sidecar, transparent text fill, background clipping, and tabular numerals. A faint mono denominator sits above its baseline, while the pink marker anchors it below. Category tracks are 2px lines with pink fill and right-aligned mono values. The score counts in over 650ms using a quartic ease-out; reduced-motion preference skips counting. The active scan dot pulses over 1.5s; reduced-motion CSS stops it.
+The chrome numeral uses the exact reflection sequence recorded in the sidecar, transparent text fill, background clipping, and tabular numerals. A faint mono denominator sits above its baseline, while the pink marker anchors it below. Category tracks are 2px lines tinted to their category role with right-aligned mono values. The score counts in over 650ms using a quartic ease-out; reduced-motion preference skips counting. The active scan dot pulses over 1.5s; reduced-motion CSS stops it.
 
 ### Tool Tabs and Prompt Output
 

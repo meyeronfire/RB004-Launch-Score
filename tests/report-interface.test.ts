@@ -6,11 +6,12 @@ import type { Finding, LighthouseStrategy, MetricCheck } from "../lib/types";
 vi.mock("next/image", async () => {
   const { createElement } = await vi.importActual<typeof import("react")>("react");
   return {
-    default: (props: { src: string; alt: string; width: number; height: number }) => createElement("img", props),
+    default: (props: { src: string; alt: string; width: number; height: number; unoptimized?: boolean }) => { const imageProps = { ...props }; delete imageProps.unoptimized; return createElement("img", imageProps); },
   };
 });
 
 import { TechnicalReportSections } from "../components/technical-report-sections";
+import { CATEGORY_ACCENTS, categoryAccent } from "../lib/report-visuals";
 
 const finding: Finding = {
   id: "sec-01", code: "SEC-01", category: "security", section: "security", severity: "high",
@@ -60,6 +61,14 @@ const renderReport = (paidFindings?: Finding[]) => renderToStaticMarkup(React.cr
 }));
 
 describe("report detail interface", () => {
+  it("assigns a stable high-contrast color to every report category", () => {
+    const categories = ["clarity", "conversion", "design_brand", "trust", "technical", "security", "seo_aeo"] as const;
+    const colors = categories.map((category) => categoryAccent(category));
+    expect(Object.keys(CATEGORY_ACCENTS)).toHaveLength(7);
+    expect(new Set(colors).size).toBe(7);
+    expect(categoryAccent("seo_aeo")).toBe(CATEGORY_ACCENTS.seo_aeo);
+  });
+
   it("organizes a finding like an audit with status, impact, evidence, and priority", () => {
     const html = renderReport();
 
@@ -68,6 +77,8 @@ describe("report detail interface", () => {
     expect(html).toContain("Priority P2");
     expect(html).toContain("−13 rule points");
     expect(html).toContain("Content-Security-Policy was not present in the launch page response.");
+    expect(html).toContain('data-category="security"');
+    expect(html).toContain("--category-accent:#ff745e");
     expect(html).toContain("PageSpeed Insights timed out during the mobile run.");
   });
 
