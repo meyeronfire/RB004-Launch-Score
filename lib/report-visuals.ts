@@ -1,13 +1,13 @@
 import type { Category } from "@/lib/types";
 
 export const CATEGORY_ACCENTS: Record<Category, string> = {
-  clarity: "#f4c95d",
+  clarity: "#ff2e7e",
   conversion: "#ff2e7e",
-  design_brand: "#b99aff",
-  trust: "#62d9be",
-  technical: "#70bdff",
-  security: "#ff745e",
-  seo_aeo: "#70df9b",
+  design_brand: "#ff2e7e",
+  trust: "#ff2e7e",
+  technical: "#ff2e7e",
+  security: "#ff2e7e",
+  seo_aeo: "#ff2e7e",
 };
 
 export function categoryAccent(category: Category): string {

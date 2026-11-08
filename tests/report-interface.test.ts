@@ -5,20 +5,27 @@ import type { Finding, LighthouseStrategy, MetricCheck } from "../lib/types";
 
 vi.mock("next/image", async () => {
   const { createElement } = await vi.importActual<typeof import("react")>("react");
-  return {
-    default: (props: { src: string; alt: string; width: number; height: number; unoptimized?: boolean }) => { const imageProps = { ...props }; delete imageProps.unoptimized; return createElement("img", imageProps); },
-  };
+  return { default: (props: { src: string; alt: string; width: number; height: number; unoptimized?: boolean }) => {
+    const imageProps = { ...props }; delete imageProps.unoptimized; return createElement("img", imageProps);
+  } };
 });
 
+import { ReportFinding } from "../components/report-finding";
+import { ReportCategoryScore } from "../components/report-category-score";
+import { ReportOtherChecks } from "../components/report-other-checks";
+import { getCheckLedger } from "../lib/report-artifacts";
 import { TechnicalReportSections } from "../components/technical-report-sections";
 import { CATEGORY_ACCENTS, categoryAccent } from "../lib/report-visuals";
+import { findingResult } from "../lib/finding-result";
+import { promptVariants, emptyDrafts } from "../lib/fix-prompts";
+import { SEVERITY_PENALTY, scoreFindings } from "../lib/score";
 
 const finding: Finding = {
   id: "sec-01", code: "SEC-01", category: "security", section: "security", severity: "high",
   title: "Missing Content-Security-Policy security header",
-  why_it_matters: "Response headers limit browser capabilities and reduce the impact of common web attacks.",
+  why_it_matters: "A response policy can limit browser capabilities.",
   evidence: "Content-Security-Policy was not present in the launch page response.",
-  fix: "PRIVATE_FIX_SENTINEL: add a Content-Security-Policy header.",
+  fix: "PRIVATE_FIX_SENTINEL: configure the policy after reviewing integrations.",
 };
 const unknownStrategy = (note: string): LighthouseStrategy => ({
   performance: { state: "unknown", note }, accessibility: { state: "unknown", note },
@@ -26,90 +33,100 @@ const unknownStrategy = (note: string): LighthouseStrategy => ({
   lcp: { state: "unknown", note }, cls: { state: "unknown", note }, inpTbt: { state: "unknown", note },
 });
 const scan = {
-  id: "scan-123", url: "https://example.test/", title: "Example",
-  findings: [finding],
-  findingCounts: { security: { total: 1, critical: 0, high: 1, medium: 0, low: 0 } },
-  checks: {
-    contentSecurityPolicy: { state: "checked", value: "Missing" } as MetricCheck,
-    title: { state: "checked", value: "Example" } as MetricCheck,
-    canonical: { state: "checked", value: "Missing" } as MetricCheck,
-    jsonLd: { state: "checked", value: "0 valid · 0 invalid" } as MetricCheck,
-    lighthouseMobileSeo: { state: "unknown", note: "PageSpeed Insights timed out during the mobile run. Retry Lighthouse to try again." } as MetricCheck,
-  },
-  lighthouse: {
-    source: "via Google PageSpeed Insights" as const,
-    mobile: unknownStrategy("PageSpeed Insights timed out during the mobile run. Retry Lighthouse to try again."),
-    desktop: unknownStrategy("PageSpeed Insights timed out during the desktop run. Retry Lighthouse to try again."),
-  },
-  aiCrawlerReport: {
-    state: "checked" as const, robotsUrl: "https://example.test/robots.txt", fetchedAt: "2026-11-08T00:00:00.000Z",
-    policies: [
-      { name: "GPTBot", userAgent: "GPTBot", purpose: "AI search", policy: "allowed" as const, matchedRules: [], requestTested: false as const },
-      { name: "ClaudeBot", userAgent: "ClaudeBot", purpose: "AI search", policy: "blocked" as const, matchedRules: [{ directive: "disallow" as const, path: "/" }], requestTested: false as const },
-      { name: "PerplexityBot", userAgent: "PerplexityBot", purpose: "AI search", policy: "unknown" as const, matchedRules: [], requestTested: false as const },
-      { name: "OtherBot", userAgent: "OtherBot", purpose: "AI search", policy: "no_matching_rule" as const, matchedRules: [], requestTested: false as const },
-    ],
-    preferences: [{ signal: "Google-Extended", label: "Google data-use preference", status: "blocked" as const, matchedRules: [{ directive: "disallow" as const, path: "/" }] }],
-    note: "robots.txt rules only; no real bot requests were tested.",
-  },
-  checkoutAvailable: true,
+  id: "scan-123", url: "https://example.test/", title: "Example", createdAt: "2026-11-08T00:00:00.000Z",
+  checks: { speedFcp: { state: "checked", value: "0 ms first contentful paint" } as MetricCheck,
+    speedLcp: { state: "checked", value: "0 ms largest contentful paint" } as MetricCheck,
+    speedDcl: { state: "checked", value: "0 ms DOMContentLoaded" } as MetricCheck,
+    speedCls: { state: "checked", value: 0 } as MetricCheck },
+  lighthouse: { source: "via Google PageSpeed Insights" as const,
+    mobile: unknownStrategy("PageSpeed Insights timed out during the mobile run."),
+    desktop: unknownStrategy("PageSpeed Insights timed out during the desktop run.") },
+  aiCrawlerReport: { state: "checked" as const, robotsUrl: "https://example.test/robots.txt", fetchedAt: "2026-11-08T00:00:00.000Z",
+    policies: [{ name: "GPTBot", userAgent: "GPTBot", purpose: "AI search", policy: "allowed" as const, matchedRules: [], requestTested: false as const }],
+    preferences: [], note: "robots.txt rules only; no real bot requests were tested." },
 } as unknown as Parameters<typeof TechnicalReportSections>[0]["scan"];
 
-const renderReport = (paidFindings?: Finding[]) => renderToStaticMarkup(React.createElement(TechnicalReportSections, {
-  scan, paidFindings, onRetryLighthouse: async () => null, onUnlock: () => {},
-  checkoutPending: false, checkoutMessage: "", checkoutSection: "",
+const renderedPerformance = () => renderToStaticMarkup(React.createElement(TechnicalReportSections, {
+  scan, onRetryLighthouse: async () => null,
 }));
 
-describe("report detail interface", () => {
-  it("assigns a stable high-contrast color to every report category", () => {
-    const categories = ["clarity", "conversion", "design_brand", "trust", "technical", "security", "seo_aeo"] as const;
-    const colors = categories.map((category) => categoryAccent(category));
+describe("report presentation", () => {
+  it("keeps recorded checks outside the seven scoring categories visible", () => {
+    const rows = getCheckLedger({ favicon: { state: "checked", value: "https://example.test/icon.png" },
+      appleTouchIcon: { state: "checked", value: "https://example.test/touch.png" },
+      lcp: { state: "unknown", note: "Historical measurement was unavailable." } });
+    const html = renderToStaticMarkup(React.createElement(ReportOtherChecks, { rows }));
+    expect(html).toContain("Other recorded checks");
+    expect(html).toContain("https://example.test/icon.png");
+    expect(html).toContain("https://example.test/touch.png");
+    expect(html).toContain("Historical measurement was unavailable.");
+  });
+  it("distinguishes an unavailable category score from a measured zero", () => {
+    const missing = renderToStaticMarkup(React.createElement(ReportCategoryScore, {}));
+    expect(missing).toContain("Unavailable");
+    expect(missing).not.toContain("/100");
+    expect(missing).not.toContain("<i");
+    expect(renderToStaticMarkup(React.createElement(ReportCategoryScore, { score: 0 }))).toContain("0<small>/100</small>");
+  });
+
+  it("gives a measured mobile tap target a specific next step and a capture link", () => {
+    const tapTarget = { ...finding, category: "conversion" as const, title: "The first mobile action has a small tap target",
+      evidence: "The first visible mobile action measures 163 × 30px; the target is at least 44 × 44px." };
+    const html = renderToStaticMarkup(React.createElement(ReportFinding, { finding: tapTarget, index: 1, evidenceAvailable: true }));
+    expect(html).toContain("touch area to at least 44 × 44px");
+    expect(html).toContain('href="#page-evidence"');
+    expect(html).not.toContain("PRIVATE_FIX_SENTINEL");
+  });
+  it("uses the one approved interface accent across all seven categories", () => {
     expect(Object.keys(CATEGORY_ACCENTS)).toHaveLength(7);
-    expect(new Set(colors).size).toBe(7);
-    expect(categoryAccent("seo_aeo")).toBe(CATEGORY_ACCENTS.seo_aeo);
+    expect(new Set(Object.values(CATEGORY_ACCENTS))).toEqual(new Set(["#ff2e7e"]));
+    expect(categoryAccent("seo_aeo")).toBe("#ff2e7e");
   });
 
-  it("organizes a finding like an audit with status, impact, evidence, and priority", () => {
-    const html = renderReport();
-
-    expect(html).toContain("Why this needs attention");
-    expect(html).toContain("Evidence recorded");
-    expect(html).toContain("Priority P2");
-    expect(html).toContain("−13 rule points");
-    expect(html).toContain("Content-Security-Policy was not present in the launch page response.");
-    expect(html).toContain('data-category="security"');
-    expect(html).toContain("--category-accent:#ff745e");
-    expect(html).toContain("PageSpeed Insights timed out during the mobile run.");
+  it("keeps title first, evidence and severity distinct, and private fix out of free rendering", () => {
+    const html = renderToStaticMarkup(React.createElement(ReportFinding, { finding, index: 0 }));
+    expect(html.indexOf("Missing Content-Security-Policy")).toBeLessThan(html.indexOf("High severity"));
+    expect(html).toContain("Confirmed issue");
+    expect(html).toContain("Why it matters");
+    expect(html).toContain("Observed");
+    expect(html).toContain("Technical detail and scoring");
+    expect(html).not.toContain("PRIVATE_FIX_SENTINEL");
+    expect(renderToStaticMarkup(React.createElement(ReportFinding, { finding, index: 0, fix: finding.fix }))).toContain("PRIVATE_FIX_SENTINEL");
   });
 
-  it("keeps remediation private in the free report and reveals it only with paid findings", () => {
-    const freeHtml = renderReport();
-    expect(freeHtml).toContain("Unlock the site-specific correction");
-    expect(freeHtml).not.toContain("PRIVATE_FIX_SENTINEL");
-    expect(freeHtml).not.toContain("default-src 'self'");
-
-    const paidHtml = renderReport([finding]);
-    expect(paidHtml).toContain("PRIVATE_FIX_SENTINEL");
+  it("labels passive form and trust heuristics for review without changing scoring", () => {
+    const form = { ...finding, category: "conversion" as const, severity: "medium" as const,
+      title: "A form action could not be confirmed from markup",
+      evidence: "Form 1 has no action attribute. It was not submitted; script-registered handlers cannot be confirmed by this passive check." };
+    expect(findingResult(form)).toBe("Needs review");
+    expect(SEVERITY_PENALTY[form.severity]).toBe(7);
+    expect(scoreFindings([form], { conversion: 1 }).categoryScores.conversion).toBe(93);
+    // Unapplied proposal: eligibility must be separately approved/versioned.
+    const hypotheticalEligible = [form].filter((item) => findingResult(item) === "Confirmed issue");
+    expect(scoreFindings(hypotheticalEligible, { conversion: 1 }).categoryScores.conversion).toBe(100);
+    expect(renderToStaticMarkup(React.createElement(ReportFinding, { finding: form, index: 0 }))).toContain("Form submission could not be verified from markup.");
+    expect(findingResult({ ...finding, category: "trust", title: "Pricing details were not detected" })).toBe("Needs review");
+    expect(findingResult({ ...finding, category: "technical", title: "Some same-site links returned an HTTP error", evidence: "One link returned HTTP 404. Three other checks were unknown." })).toBe("Confirmed issue");
+    const prompt = promptVariants({ url: "https://example.test/", title: "Example", stack: [], findings: [form, finding], copyDrafts: emptyDrafts() }).Codex;
+    expect(prompt.indexOf("Missing Content-Security-Policy")).toBeLessThan(prompt.indexOf("## Separate verification tasks"));
+    expect(prompt.indexOf("A form action could not be confirmed")).toBeGreaterThan(prompt.indexOf("## Separate verification tasks"));
   });
 
-  it("shows robots-policy counts and page-level SEO/AEO evidence without implying real bot requests", () => {
-    const html = renderReport();
-
+  it("shows unavailable positive timings honestly and keeps robots policy separate", () => {
+    const html = renderedPerformance();
+    expect(html).toContain("PageSpeed Insights timed out");
+    expect(html).toContain("First contentful paint");
+    expect(html).not.toContain("0 ms first contentful paint");
+    expect(html).not.toContain("0 ms largest contentful paint");
     expect(html).toContain("Allowed by robots");
-    expect(html).toContain("Blocked by robots");
-    expect(html).toContain("No matching rule");
-    expect(html).toContain("Data-use preferences");
-    expect(html).toContain("Page-level SEO / AEO readiness");
-    expect(html).toContain("Structured data");
     expect(html).toContain("robots.txt rules only; no real bot requests were tested.");
   });
-});
 
-if (process.env.REPORT_PREVIEW_PATH) {
-  it("writes a local report preview for visual verification", async () => {
-    const { readFile, writeFile } = await import("node:fs/promises");
-    const css = await readFile("app/globals.css", "utf8");
-    const markup = renderReport();
-    await writeFile(process.env.REPORT_PREVIEW_PATH!, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><main class="report-page">${markup}</main></body></html>`);
+  it("keeps performance recommendations separate from form submission tasks", () => {
+    const performance = { ...finding, category: "technical" as const, section: "technical" as const,
+      title: "Mobile performance needs attention", evidence: "The recorded lab performance score is 45." };
+    const html = renderToStaticMarkup(React.createElement(ReportFinding, { finding: performance, index: 0 }));
+    expect(html).not.toContain("Verify the form");
+    expect(promptVariants({ url: "https://example.test/", title: "Example", stack: [], findings: [performance], copyDrafts: emptyDrafts() }).Codex).not.toContain("A safe submission test");
   });
-}
+});

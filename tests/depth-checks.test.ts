@@ -50,14 +50,15 @@ describe("security depth checks", () => {
     expect(() => budget.consume()).toThrow("60-request limit");
   });
 
-  it("includes stack-aware security and SEO snippets in the paid fix prompt", () => {
+  it("asks the coding tool to inspect the repository and gives finding-specific acceptance checks", () => {
     const prompt = promptVariants({ url: "https://site.test/", title: "Launch", stack: ["Next.js"], copyDrafts: emptyDrafts(), findings: [
       makeFinding({ section: "security", category: "security", severity: "high", title: "Missing CSP", why_it_matters: "Headers matter.", evidence: "CSP was missing.", fix: "Set CSP." }),
       makeFinding({ section: "seo", category: "seo_aeo", severity: "medium", title: "Missing canonical", why_it_matters: "Canonical matters.", evidence: "None found.", fix: "Add canonical." }),
     ] }).Codex;
-    expect(prompt).toContain("async headers()");
-    expect(prompt).toContain("export const metadata");
-    expect(prompt).toContain("frame-ancestors 'none'");
+    expect(prompt).toContain("Inspect the actual repository");
+    expect(prompt).toContain("Acceptance criteria: The relevant response");
+    expect(prompt).toContain("Acceptance criteria: The rendered document");
+    expect(prompt).not.toContain("async headers()");
     expect(promptVariants({ url: "https://site.test/", title: "Launch", stack: [], copyDrafts: emptyDrafts(), findings: [] })["Claude Code"]).toContain("Work in the existing repository");
   });
 });

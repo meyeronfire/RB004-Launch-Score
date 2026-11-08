@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LighthouseStrategy, ScanRecord } from "@/lib/types";
 
 const mocks = vi.hoisted(() => ({
@@ -29,6 +29,7 @@ let persisted: ScanRecord;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("PAGESPEED_API_KEY", "mock-pagespeed-key");
   persisted = { id: scanId, url: "https://example.com/", status: "complete", leaseToken: "lease-existing", findings: [], checks: {}, score: 80, lighthouse: { mobile: strategy(71), desktop: strategy(74), source: "via Google PageSpeed Insights" } } as unknown as ScanRecord;
   mocks.rateLimit.mockResolvedValue({ allowed: true, misconfigured: false });
   mocks.claimScopedCooldown.mockResolvedValue(true);
@@ -42,6 +43,8 @@ beforeEach(() => {
   });
   mocks.publicScan.mockImplementation((scan: ScanRecord) => ({ id: scan.id, status: scan.status, lighthouse: scan.lighthouse, score: scan.score }));
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Lighthouse retry route", () => {
   it.each([["mobile", 88, 74], ["desktop", 91, 71]] as const)("refreshes only the requested %s strategy and keeps the other strategy", async (selected, freshScore, existingOtherScore) => {

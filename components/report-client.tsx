@@ -2,50 +2,32 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { RELEASE_CODE, PRICE_FIX_PROMPT_USD, PRODUCT_NAME } from "@/config/release";
 import { track } from "@/lib/analytics-client";
 import type { Finding } from "@/lib/types";
-import { categoryAccent } from "@/lib/report-visuals";
-import { TechnicalReportSections } from "@/components/technical-report-sections";
+import { TechnicalReportSections, ReportSharePreview } from "@/components/technical-report-sections";
 import { GlassCard } from "@/components/glass-card";
 import { ScanForm } from "@/components/scan-form";
-import { CATEGORY_WEIGHTS, CATEGORY_CHECKS } from "@/config/scoring";
+import { CATEGORY_WEIGHTS } from "@/config/scoring";
 import type { Category } from "@/lib/types";
-import { checkOutcome } from "@/lib/audit-counts";
-import { getCheckLedger, getCategoryCheckStats, getCheckLabel, type CheckStatus } from "@/lib/report-artifacts";
+import { getCheckLedger, getCategoryCheckStats, type CheckStatus } from "@/lib/report-artifacts";
+import { findingResult } from "@/lib/finding-result";
 import { ScrollReveal } from "@/components/scroll-reveal";
 import { promptVariants } from "@/lib/fix-prompts";
 import { ReportArtifactActions } from "@/components/report-artifact-actions";
+import { ReportFinding } from "@/components/report-finding";
+import { ReportCategoryScore } from "@/components/report-category-score";
+import { ReportOtherChecks } from "@/components/report-other-checks";
 
 type FreeReport = ReturnType<typeof import("@/lib/store").publicScan>;
-const priorityLabel: Record<Finding["severity"], string> = { critical: "P1 · URGENT", high: "P2 · HIGH", medium: "P3 · MEDIUM", low: "P4 · LOW" };
-const ruleLoss: Record<Finding["severity"], number> = { critical: 22, high: 13, medium: 7, low: 3 };
 const labels: Record<Category, string> = { clarity: "Clarity", conversion: "Conversion", design_brand: "Design & Brand", trust: "Trust", technical: "Technical", security: "Security", seo_aeo: "SEO / AEO" };
-const categoryLabel = (category: string) => labels[category as Category] ?? (category ? category.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) : "Other");
 const categoryOrder = Object.keys(CATEGORY_WEIGHTS) as Category[];
-const scoreDisplay = (score: number) => String(score).padStart(2, "0");
+const toolId = (name: string) => `prompt-tab-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+const scoreDisplay = (score?: number) => typeof score === "number" ? String(score).padStart(2, "0") : "—";
+const formatUtc = (value?: string, options?: Intl.DateTimeFormatOptions) => value ? `${new Date(value).toLocaleString("en-GB", { ...options, timeZone: "UTC" })} UTC` : "Time unavailable";
 const scanSteps = ["Checking scan permissions…", "Rendering the desktop page…", "Rendering the mobile page…", "Checking links and page signals…", "Preparing the evidence-led report…", "Reviewing visual design…"];
-const categoryChecks = CATEGORY_CHECKS;
-const checkNames: Record<string, string> = { title: "Page title", description: "Meta description", h1Count: "Single H1", headingOrder: "Heading order", primaryCtaTargets: "Primary action destination", mobileOverflow: "Mobile fit", formCount: "Forms inspected", designContrastFailures: "Text contrast", proofSignals: "Proof signal", pricing: "Pricing information", faq: "FAQ", contact: "Contact path", ogTitle: "Share title", ogDescription: "Share description", twitterCard: "X card metadata", status: "Page response", redirects: "Redirect chain", sitemap: "Sitemap", imageAltCoverage: "Image descriptions", pageSpeedMobile: "Mobile Lighthouse performance", pageSpeedDesktop: "Desktop Lighthouse performance", lighthouseMobileAccessibility: "Mobile accessibility", lighthouseDesktopAccessibility: "Desktop accessibility", lighthouseMobileBestPractices: "Mobile best practices", lighthouseDesktopBestPractices: "Desktop best practices", lighthouseMobileSeo: "Mobile Lighthouse SEO", lighthouseDesktopSeo: "Desktop Lighthouse SEO", consoleErrors: "Browser errors", https: "HTTPS", tlsCertificate: "TLS certificate", httpToHttps: "HTTPS redirect", contentSecurityPolicy: "CSP", strictTransportSecurity: "HSTS", frameProtection: "Frame protection", contentTypeOptions: "Content type protection", referrerPolicy: "Referrer policy", permissionsPolicy: "Permissions policy", exposedFiles: "Exposed files", frontendSecrets: "Frontend secrets", mixedContent: "Mixed content", cookieIssues: "Cookie attributes", corsWildcardRoutes: "CORS policy" };
-
-function CategoryRing({ category, score }: { category: Category; score?: number }) {
-  const radius = 26; const circumference = 2 * Math.PI * radius; const value = typeof score === "number" ? score : undefined;
-  const dash = circumference * (1 - (value ?? 0) / 100);
-  const angle = -Math.PI / 2; const dotX = 32 + radius * Math.cos(angle); const dotY = 32 + radius * Math.sin(angle);
-  const accent = categoryAccent(category);
-  const ringId = `category-ring-${category}`;
-  return <div className="category-ring" data-category={category} style={{ "--category-accent": accent } as CSSProperties} aria-label={`${labels[category]}: ${value === undefined ? "not available" : `${value} out of 100`}`}>
-    <svg viewBox="0 0 64 64" aria-hidden="true">
-      <defs><linearGradient id={ringId} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor={accent}/><stop offset="100%" stopColor="#fff" stopOpacity=".7"/></linearGradient></defs>
-      <circle className="category-ring-track" cx="32" cy="32" r={radius}/>
-      <circle className={`category-ring-value${value === undefined ? " dim" : ""}`} style={{ stroke: value === undefined ? "rgba(255,255,255,.18)" : `url(#category-ring-${category})` }} cx="32" cy="32" r={radius} strokeDasharray={`${circumference - dash} ${circumference}`} strokeDashoffset={0}/>
-      {value !== undefined && value > 0 && <circle className="category-ring-dot" cx={dotX} cy={dotY} r="2.4"/>}
-    </svg>
-    <span className="mono">{value ?? "n/a"}</span><span className="category-ring-label">{labels[category]}</span>
-  </div>;
-}
 
 export function ReportClient({ initial }: { initial: FreeReport }) {
   const [scan, setScan] = useState(initial as FreeReport & { findings?: Finding[]; lockedTitles?: string[]; lockedCount?: number });
@@ -89,10 +71,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
           }
           if (response.ok && !cancelled) {
             const result = await response.json() as NonNullable<typeof paidData>;
-            if (!result.prompts["Claude Code"]) {
-              const generated = promptVariants({ url: scan.finalUrl ?? scan.url, title: scan.title ?? "", stack: scan.stackHints ?? [], findings: result.findings, copyDrafts: result.copyDrafts });
-              result.prompts = { ...result.prompts, "Claude Code": generated["Claude Code"] };
-            }
+            result.prompts = promptVariants({ url: scan.finalUrl ?? scan.url, title: scan.title ?? "", stack: scan.stackHints ?? [], findings: result.findings, copyDrafts: result.copyDrafts, scannedAt: scan.createdAt, scoringVersion: scan.scoringVersion });
             setPaidData(result); setPaidStatus("");
           }
         } catch { /* a later retry or refresh can recover */ }
@@ -100,7 +79,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
       void loadPaidReport();
       return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
     }
-  }, [id, scan.finalUrl, scan.id, scan.paidAvailable, scan.paidReportPending, scan.stackHints, scan.status, scan.title, scan.url]);
+  }, [id, scan.createdAt, scan.finalUrl, scan.id, scan.paidAvailable, scan.paidReportPending, scan.scoringVersion, scan.stackHints, scan.status, scan.title, scan.url]);
   const completed = scan.status === "complete";
   useEffect(() => {
     if (!completed || typeof scan.score !== "number") return;
@@ -140,6 +119,14 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   }
   async function copyPrompt() {
     try { await navigator.clipboard.writeText(prompt); setCopyStatus("Prompt copied."); } catch { setCopyStatus("Your browser could not copy the prompt."); }
+  }
+  function downloadPrompt() {
+    if (!prompt) return;
+    const url = URL.createObjectURL(new Blob([prompt], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url; link.download = `verdkt-${tool.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-fix-prompt.txt`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   async function checkout(section = "") {
     setCheckoutSection(section); setCheckoutMessage(""); setCheckoutPending(true);
@@ -181,15 +168,20 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     } catch (error) { setAccessStatus(error instanceof Error ? error.message : "The request could not be completed."); }
   }
   const findings = scan.findings ?? [];
+  const captureLink = (finding: Pick<Finding, "category" | "title">) => {
+    const visibleContext = ["clarity", "conversion", "design_brand", "trust"].includes(finding.category)
+      || /viewport|overflow|tap target|touch target|contrast|layout/i.test(finding.title);
+    if (!visibleContext) return undefined;
+    if (/mobile|tap target|touch target/i.test(finding.title) && scan.mobileImage) return "#mobile-evidence";
+    return scan.desktopImage ? "#desktop-evidence" : scan.mobileImage ? "#mobile-evidence" : undefined;
+  };
+  const firstNeedsReview = findings.length > 0 && findingResult(findings[0]) === "Needs review";
   const checkLedger = getCheckLedger(scan.checks, findings);
   const checkCounts = checkLedger.reduce<Record<CheckStatus, number>>((counts, row) => { counts[row.status] += 1; return counts; }, { pass: 0, issue: 0, review: 0, unknown: 0, not_applicable: 0, measured: 0 });
   const categoryStats = getCategoryCheckStats(scan.checks, findings, scan.categoryScores);
   const reportCounts = { checksRun: checkLedger.length, passed: checkCounts.pass, issues: checkCounts.issue };
-  const weightLabel = `WEIGHTS · ${categoryOrder.map((key) => CATEGORY_WEIGHTS[key]).join(" / ")}`;
   const unscoredCategories = categoryOrder.filter((key) => typeof scan.categoryScores?.[key] !== "number");
   const currentStep = scanSteps.indexOf(scan.phase);
-  const speedTile = (key: string, label: string, unit: string, goodLimit: number) => { const raw = Number(scan.checks?.[key]?.value ?? NaN); return { label, value: Number.isFinite(raw) ? `${raw} ${unit}` : "n/a", good: Number.isFinite(raw) && raw <= goodLimit }; };
-  const speedTiles = [speedTile("speedLcp", "LCP", "ms", 2500), speedTile("speedFcp", "FCP", "ms", 1800), speedTile("speedCls", "CLS", "", 0.1), speedTile("speedDcl", "DCL", "ms", 1800)];
 
   return <main className="report-page">
     <ScrollReveal selectors=".depth-section, .categories-section, .findings-section, .capture-section, .category-row, .check-evidence > div, .finding-glass-shell, .speed-insights > div" />
@@ -198,42 +190,32 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     {scan.status === "failed" && <section className="wrap scan-progress scan-failed"><span className="mono progress-label">SCAN STOPPED</span><h1>This page could not be reviewed.</h1><p>{scan.error ?? "The page could not be reached. Check the URL and try again."}</p><ScanForm initialUrl={scan.url} submitLabel="Retry scan" /><Link className="text-link" href="/">Try a different page →</Link></section>}
     {completed && <>
       <section className="wrap report-hero">
-        <div className="report-domain">{scan.domain} <span>·</span> {scan.id === "example" ? "EXAMPLE REPORT · 31 OCT 2026" : "LAUNCH SCORE"}</div>
-        <div className="report-chips">{[scan.status === "complete" ? "completed" : scan.status, `HTTP ${scan.checks?.status?.value ?? "—"}`, `${String(scan.checks?.redirects?.value ?? "0").replace(/^0$/, "0")} redirects`, `${reportCounts.checksRun} checks`].map((chip) => <span className="report-chip" key={chip}>{chip}</span>)}</div>
-        <GlassCard className="score-overview" shellClassName="report-score-shell">
-          <div className="score-line" role="img" aria-label={`${PRODUCT_NAME}: ${scan.score ?? 0} out of 100`}><span className="score-number" aria-hidden="true">{scoreDisplay(animatedScore ?? scan.score ?? 0)}</span><span className="score-denom" aria-hidden="true">/100</span><span className="score-tick" aria-hidden="true"/></div>
-          <p className="coverage-note score-coverage">{partial ? "Some optional checks could not be confirmed." : "Assessment complete."} Unknown checks do not add points.</p>
-          <div className="audit-counts mono">{reportCounts.checksRun} checks run · {reportCounts.passed} passed · {reportCounts.issues} issues · {checkCounts.review} review · {checkCounts.unknown} unknown · {checkCounts.not_applicable} N/A · {checkCounts.measured} measured</div>
+        <div className="report-domain">{scan.domain} <span>·</span> {scan.id === "example" ? "EXAMPLE REPORT · 31 OCT 2026" : scan.createdAt ? `SCANNED ${formatUtc(scan.createdAt, { dateStyle: "medium", timeStyle: "short" })}` : "SCAN DATE UNAVAILABLE"}</div>
+        <div className="report-summary-grid">
+        <GlassCard className="score-overview" shellClassName="report-score-shell" glow={false}>
+          <div className="summary-score-head"><span className="mono">VERDKT SCORE</span><span className="summary-complete-state"><i aria-hidden="true"/> Scan completed</span></div>
+          <div className="score-line" role="img" aria-label={typeof scan.score === "number" ? `${PRODUCT_NAME}: ${scan.score} out of 100` : `${PRODUCT_NAME} score unavailable`}><span className="score-number" aria-hidden="true">{scoreDisplay(animatedScore ?? scan.score)}</span>{typeof scan.score === "number" && <span className="score-denom" aria-hidden="true">/100</span>}</div>
+          <p className="coverage-note score-coverage">{partial ? "Some checks could not be confirmed; this score reflects the recorded evidence." : "This score summarizes the recorded checks across seven launch-page categories."} Unknown checks do not add points.</p>
+          <details className="summary-scan-details"><summary>Scan details and coverage</summary><div><p>{reportCounts.checksRun} ledger entries · {reportCounts.passed} passed · {reportCounts.issues} issues · {checkCounts.review} review · {checkCounts.unknown} unknown · {checkCounts.not_applicable} not applicable · {checkCounts.measured} measured.</p><p>Ledger entries include configured checks not recorded in this scan, shown as unknown. A measured value can be informational and does not imply a pass. Counts are separate result groups, not a share of one coverage total.</p><p>HTTP response: {scan.checks?.status?.value ?? "Unavailable"} · Redirects: {scan.checks?.redirects?.value ?? "Unavailable"}</p></div></details>
           {searchParams.get("checkout") === "complete" && <p className="inline-status" role="status">Your checkout returned to this report. Once the payment is verified, we’ll email a secure purchaser link for the full report.</p>}
           {searchParams.get("checkout") === "cancelled" && <p className="inline-status" role="status">Checkout was cancelled. Your free report is still available here.</p>}
         </GlassCard>
-        <div className="score-summary"><h1>{scan.title ? `A first look at ${scan.title}` : "Your launch page, at a glance."}</h1><p>Seven angles on whether a new visitor can understand, trust, and act on your page.</p></div>
-        <div className="category-rings">{categoryOrder.map((key) => <CategoryRing key={key} category={key} score={scan.categoryScores?.[key]}/>)}</div>
+        <div className="score-summary"><h1>{firstNeedsReview ? "Verify the first priority." : findings.length ? "Start with the first priority." : partial ? "Some evidence still needs review." : "No scored issues were recorded."}</h1>{scan.title && <p className="summary-page-title">Page reviewed: {scan.title}</p>}<p className="summary-verdict">{findings.length ? `First priority: ${findings[0].title}. ${firstNeedsReview ? "The scan could not confirm the outcome; check it before changing code." : "The finding below records what the scan observed."}` : "The scan is complete; this does not mean every possible check passed."}</p><a className="primary-action summary-next-action" href={findings.length ? "#top-fixes" : "#categories"}>{firstNeedsReview ? "Verify the first finding" : findings.length ? "Review the top fix" : "Explore category results"}</a><p>Page-level assessment of clarity, trust, conversion and technical signals. Results are limited to what this scan could verify.</p></div>
+        </div>
         {unscoredCategories.length > 0 && <p className="coverage-note category-legacy-note">Scores not recorded for this saved report: {unscoredCategories.map((category) => labels[category]).join(", ")}. Historical reports are not rescored automatically.</p>}
       </section>
-      <section className="wrap categories-section"><div className="report-section-title"><h2>Categories.</h2><span className="mono">{weightLabel}</span></div>
-        <div className="speed-insights" aria-label="Rendered speed insights">
-          {speedTiles.map((tile) => <div key={tile.label}><span className="mono">{tile.label}</span><strong className={`mono${tile.good ? " good" : " bad"}`}>{tile.value}</strong></div>)}
-        </div>
-        <div className="score-categories">{categoryOrder.map((key) => <div className="category-row" data-category={key} style={{ "--category-accent": categoryAccent(key) } as CSSProperties} key={key}><span>{labels[key]}</span><div className="category-track" aria-hidden="true"><i style={{ width: `${scan.categoryScores?.[key] ?? 0}%` }}/></div><span className="mono category-score">{scan.categoryScores?.[key] ?? "n/a"}</span></div>)}</div>
-        <div className="category-status-grid" aria-label="Check coverage by category">{categoryOrder.map((key) => { const stats = categoryStats[key]; return <article className="category-status-card" data-category={key} style={{ "--category-accent": categoryAccent(key) } as CSSProperties} key={key}><div className="category-status-heading"><strong>{labels[key]}</strong><span className="mono">{stats.score ?? "n/a"}/100</span></div><div className="category-status-counts mono"><span>{stats.pass} pass</span><span>{stats.issue} issue</span><span>{stats.review} review</span><span>{stats.unknown} unknown</span><span>{stats.not_applicable} N/A</span><span>{stats.measured} measured</span></div></article>; })}</div>
-        {scan.scoreBreakdown && <details className="score-breakdown"><summary className="mono">Why this scored this way</summary>
-          <div className="breakdown-grid">
-            <div>
-              <p className="mono breakdown-label">CATEGORY POINT BREAKDOWN</p>
-              {categoryOrder.map((key) => { const entry = scan.scoreBreakdown?.categories[key]; if (!entry) return null; return <div className="breakdown-row" key={key}><span className="mono">{labels[key]}</span><strong className="mono">{entry.score}/100 · base {entry.base} · ceiling {entry.ceiling} · −{entry.lost} pts / {entry.count} finding{entry.count === 1 ? "" : "s"}</strong></div>; })}
-            </div>
-            <div>
-              <p className="mono breakdown-label">BIGGEST SCORE-LOSING CHECKS</p>
-              {scan.scoreBreakdown.top.map((item) => <div className="breakdown-row" key={item.code ?? item.title}><span className={`mono severity-${item.severity}`}>{item.code} · {item.severity.toUpperCase()}</span><strong className="mono">{item.title.slice(0, 60)} · −{item.penalty} pts</strong></div>)}
-            </div>
-          </div>
-          <p className="coverage-note">Scores are deterministic: each category starts from its assessment (default 100) and loses fixed rule points per finding (critical −22, high −13, medium −7, low −3), capped by confirmed evidence. Unknown checks stay unknown.</p>
-        </details>}<div className="category-passed-groups">{categoryOrder.map((category) => { const passed = categoryChecks[category].filter((key) => scan.checks?.[key] && checkOutcome(key, scan.checks[key], findings) === true).map((key) => ({ key, label: checkNames[key] ?? getCheckLabel(key) })); if (!passed.length) return null; return <details className="category-passed-group" key={category}><summary className="mono">{labels[category]} · {passed.length} passed</summary><ul className="passed-checks">{passed.map(({ key, label }) => <li className="mono" key={key}><span aria-hidden="true">✓</span>{label}</li>)}</ul></details>; })}</div></section>
-      {findings.length > 0 && <section className="wrap findings-section"><div className="report-section-title"><h2>Top fixes.</h2><span className="mono">TOP {Math.min(findings.length, 3)} FREE FINDINGS</span></div>
-        <div className="finding-list">{findings.slice(0, 3).map((item, index) => <GlassCard as="article" id={`finding-${item.id}`} className={`finding severity-card severity-${item.severity}`} shellClassName="finding-glass-shell" style={{ "--category-accent": categoryAccent(item.category) } as CSSProperties} data-category={item.category} key={item.id}><span className="mono finding-index">0{index + 1}</span><div><span className={`mono finding-meta severity-${item.severity}`}>{item.code ? `${item.code} · ` : ""}{categoryLabel(item.category)} · {item.severity.toUpperCase()} · {priorityLabel[item.severity]} · −{ruleLoss[item.severity]} RULE POINTS</span><h3>{item.title}</h3><p><strong>Why it matters:</strong> {item.why_it_matters}</p><p className="finding-evidence"><strong>Evidence:</strong> {item.evidence}</p></div></GlassCard>)}</div>
-        {Boolean(scan.lockedCount) && !paidData && <div className="locked-findings"><p className="mono">{scan.lockedCount} MORE FINDINGS{checkoutAvailable ? ` · FULL REPORT + FIX PROMPT $${PRICE_FIX_PROMPT_USD} ONCE` : ""}</p></div>}
-      </section>}
+      {findings.length > 0 && <section className="wrap findings-section" id="top-fixes"><div className="report-section-title"><h2>Top fixes.</h2><span className="mono">TOP {Math.min(findings.length, 3)} PRIORITISED FINDINGS</span></div><div className="finding-list">{findings.slice(0, 3).map((item, index) => <ReportFinding key={item.id} finding={item} index={index} evidenceAvailable={Boolean(captureLink(item))} evidenceHref={captureLink(item)}/>)}</div>{Boolean(scan.lockedCount) && !paidData && <p className="locked-findings">More finding summaries appear in the categories below. Site-specific implementation fixes and the Fix-Prompt are available after purchase.</p>}</section>}
+      <section className="wrap categories-section" id="categories"><div className="report-section-title"><h2>Category overview.</h2><span className="mono">OPEN A CATEGORY FOR FINDINGS AND CHECK RESULTS</span></div>
+        <div className="score-categories">{categoryOrder.map((key) => { const stats = categoryStats[key]; const findingsForCategory = (paidData?.findings ?? findings).filter((item) => item.category === key); const rows = checkLedger.filter((row) => row.category === labels[key]); const confirmedFindings = findingsForCategory.filter((item) => findingResult(item) === "Confirmed issue").length; const reviewFindings = findingsForCategory.length - confirmedFindings; return <details className="category-row" data-category={key} key={key}><summary><span className="category-row-name">{labels[key]}</span><ReportCategoryScore score={scan.categoryScores?.[key]}/><span className="mono category-row-context">{confirmedFindings} confirmed · {reviewFindings} review shown · {stats.unknown} checks unknown</span></summary><div className="category-expanded"><p>Weight {CATEGORY_WEIGHTS[key]}%. Finding states shown: {confirmedFindings} confirmed, {reviewFindings} need review. Check states: {stats.pass} passed, {stats.issue} issues, {stats.review} review, {stats.unknown} unknown, {stats.not_applicable} not applicable, {stats.measured} informational measurements. Finding and check states are separate.</p>{key === "design_brand" && scan.designReview?.state === "checked" && scan.designReview.dimensions && <div className="design-dimensions">{([["Hierarchy", "visualHierarchy"], ["Typography", "typography"], ["Spacing", "spacingRhythm"], ["Contrast", "paletteContrast"], ["Brand", "brandConsistency"], ["Generic signals", "genericSignals"]] as const).map(([label, dimension]) => <div key={dimension}><span>{label}</span><strong>{scan.designReview?.dimensions?.[dimension] ?? "Unavailable"}</strong></div>)}</div>}{findingsForCategory.map((finding, index) => <ReportFinding key={finding.id} finding={finding} index={index} fix={paidData ? finding.fix : undefined} evidenceAvailable={Boolean(captureLink(finding))} evidenceHref={captureLink(finding)}/>)}{!findingsForCategory.length && <p>No finding recorded in this category. Check results below show what was and was not confirmed.</p>}<details className="category-check-list"><summary>Show {rows.length} check results</summary><div className="check-evidence">{rows.map((row) => <div className="check-ledger-row" key={row.key}><span className="check-ledger-label"><span className="mono check-ledger-status">{row.status.replaceAll("_", " ")}</span><span>{row.label}</span></span><strong className="mono">{row.value ?? row.note ?? "Not recorded"}</strong></div>)}</div></details></div></details>; })}</div>
+        <p className="coverage-note">Check results are distinct states: passed, issue, review, unknown, not applicable, or informational measurement. The list includes configured checks missing from this scan as unknown; its length is not a count of checks run.</p>
+      </section>
+      <section className="wrap capture-section" id="page-evidence" aria-label="Rendered page previews">
+        <div className="report-section-title"><h2>Page evidence.</h2><span className="mono">CAPTURED RENDERS · NOT PROOF OF INVISIBLE BEHAVIOR</span></div>
+        {scan.desktopImage || scan.mobileImage ? <div className="capture-grid">{scan.desktopImage && <figure id="desktop-evidence"><Image src={scan.desktopImage} alt={`Desktop rendering of ${scan.domain}`} width={1440} height={900} unoptimized loading="eager"/><figcaption className="mono">DESKTOP · 1440 × 900 · scan time {formatUtc(scan.createdAt)}{findings.length > 0 && <a className="capture-return" href="#top-fixes">Return to priority findings</a>}</figcaption></figure>}{scan.mobileImage && <figure id="mobile-evidence"><Image src={scan.mobileImage} alt={`Mobile rendering of ${scan.domain}`} width={390} height={844} unoptimized loading="eager"/><figcaption className="mono">MOBILE · 390 × 844 · scan time {formatUtc(scan.createdAt)}{findings.length > 0 && <a className="capture-return" href="#top-fixes">Return to priority findings</a>}</figcaption></figure>}</div> : <p className="coverage-note">No screenshot was recorded for this scan. Findings retain their textual evidence; no marker locations were recorded.</p>}
+      </section>
+      <section className="wrap depth-section supplementary-checks" aria-label="Additional recorded evidence"><ReportOtherChecks rows={checkLedger}/></section>
+      <TechnicalReportSections scan={scan} onRetryLighthouse={retryLighthouse}/>
+      <section className="wrap depth-section scoring-methodology" aria-labelledby="methodology-title"><div className="report-section-title"><h2 id="methodology-title">Scoring methodology.</h2><span className="mono">DETERMINISTIC · SCORING VERSION {scan.scoringVersion ?? "UNKNOWN"}</span></div><p className="coverage-note">Category weights: {categoryOrder.map((key) => `${labels[key]} ${CATEGORY_WEIGHTS[key]}%`).join(" · ")}. Each category starts from its recorded assessment and loses configured rule points per finding (critical −22, high −13, medium −7, low −3). Unknown checks remain unknown; scoring rules and weights are unchanged.</p>{scan.scoreBreakdown && <details className="score-breakdown"><summary>View category points and rule deductions</summary><div className="breakdown-grid"><div><p className="mono breakdown-label">CATEGORY POINT BREAKDOWN</p>{categoryOrder.map((key) => { const entry = scan.scoreBreakdown?.categories[key]; if (!entry) return null; return <div className="breakdown-row" key={key}><span className="mono">{labels[key]}</span><strong className="mono">{entry.score}/100 · base {entry.base} · ceiling {entry.ceiling} · −{entry.lost} pts / {entry.count} finding{entry.count === 1 ? "" : "s"}</strong></div>; })}</div><div><p className="mono breakdown-label">BIGGEST SCORE-LOSING CHECKS</p>{scan.scoreBreakdown.top.map((item) => <div className="breakdown-row" key={item.code ?? item.title}><span className="mono">{item.code} · {item.severity.toUpperCase()}</span><strong className="mono">{item.title} · −{item.penalty} pts</strong></div>)}</div></div></details>}</section>
       {scan.id !== "example" && !paidData && <section className="wrap report-unlock-offer" id="unlock" aria-label="Unlock the full report and Fix Prompt">
         <div>
           <p className="mono report-unlock-label">FULL REPORT + FIX PROMPT · ${PRICE_FIX_PROMPT_USD} · ONE-TIME</p>
@@ -247,13 +229,8 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
           {notifyStatus && <p className="inline-status" role="status">{notifyStatus}</p>}
         </div>
       </section>}
-      <TechnicalReportSections scan={{ ...scan, checkoutAvailable } as FreeReport & { findingCounts?: Record<string, { total: number; critical: number; high: number; medium: number; low: number }>; shareImageAvailable?: boolean; checkoutAvailable?: boolean; findings?: Finding[] }} paidFindings={paidData?.findings} onRetryLighthouse={retryLighthouse} onUnlock={(section) => void checkout(section)} checkoutPending={checkoutPending} checkoutMessage={checkoutMessage} checkoutSection={checkoutSection}/>
       <ReportArtifactActions report={scan} paidData={paidData} />
       <div className="wrap share-row"><span className="mono">SHARE YOUR SCORE</span><button type="button" onClick={() => openShare("x")}>X</button><button type="button" onClick={() => openShare("linkedin")}>LinkedIn</button><button type="button" onClick={copyLink}>Copy link</button><span role="status">{shareStatus}</span></div>
-      <section className="wrap capture-section" aria-label="Rendered page previews">
-        <div className="report-section-title"><h2>Your page, rendered.</h2><span className="mono">DESKTOP 1440 × 900 / MOBILE 390 × 844</span></div>
-        <div className="capture-grid">{scan.desktopImage && <figure><Image src={scan.desktopImage} alt={`Desktop rendering of ${scan.domain}`} width={1440} height={900} unoptimized loading="eager"/><figcaption className="mono">DESKTOP · 1440 × 900</figcaption></figure>}{scan.mobileImage && <figure><Image src={scan.mobileImage} alt={`Mobile rendering of ${scan.domain}`} width={390} height={844} unoptimized loading="eager"/><figcaption className="mono">MOBILE · 390 × 844</figcaption></figure>}</div>
-      </section>
       {paidStatus && <section className="wrap paid-report"><p className="mono inline-status" role="status">{paidStatus}</p></section>}
       {scan.id !== "example" && <section className="wrap email-section"><div><h2>Keep your report close.</h2><p>Optional. Save your email with this report; a report link will be sent if email delivery is available.</p></div><div className="email-actions"><form action={async (formData) => submitLead(formData)}><label htmlFor="lead-email" className="sr-only">Email address</label><input type="email" required maxLength={254} name="email" id="lead-email" autoComplete="email" placeholder="you@example.com"/><button type="submit">Save email & send</button><span role="status">{emailStatus}</span></form>{scan.paidAvailable && !paidData && <form action={async (formData) => requestAccess(formData)}><label htmlFor="access-email" className="sr-only">Email used at checkout</label><input type="email" required maxLength={254} name="email" id="access-email" autoComplete="email" placeholder="Email used at checkout"/><button type="submit">Resend paid report link</button><span role="status">{accessStatus}</span></form>}</div></section>}
       {paidData && <section className="wrap paid-report"><div className="report-section-title"><h2>Fix your highest-impact issues.</h2><span className="mono">FIX PROMPT · UNLOCKED</span></div>{scan.paidRescanAvailable && <p className="mono paid-rescan-note">Your purchase includes unlimited re-scans of this URL for seven days. <Link href={`/?url=${encodeURIComponent(scan.url)}`}>Rescan this URL →</Link></p>}<div className="report-copy"><span className="mono">COPY DRAFT STATUS</span><p>{paidData.copyDrafts.status}</p><div className="copy-drafts"><div><span className="mono">HEADLINE OPTIONS</span>{paidData.copyDrafts.headlines.map((line, i) => <p key={i}>{line}</p>)}</div><div><span className="mono">SUBHEADLINE</span><p>{paidData.copyDrafts.subheadline}</p></div><div><span className="mono">PRIMARY CTA</span><p>{paidData.copyDrafts.cta}</p></div><div><span className="mono">FAQ DRAFT</span><p>{paidData.copyDrafts.faq}</p></div><div><span className="mono">META TITLE & DESCRIPTION</span><p>{paidData.copyDrafts.metaTitle}</p><p>{paidData.copyDrafts.metaDescription}</p></div></div></div><div className="tool-tabs" role="tablist" aria-label="Fix prompt by tool" onKeyDown={(event) => {
@@ -264,7 +241,8 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
         const selected = tabs[next];
         if (selected?.dataset.tool) { setTool(selected.dataset.tool); selected.focus(); }
-      }}>{Object.keys(paidData.prompts).map((name) => <button type="button" role="tab" id={`prompt-tab-${name}`} data-tool={name} aria-controls="prompt-content" tabIndex={tool === name ? 0 : -1} aria-selected={tool === name} className={tool === name ? "active" : ""} onClick={() => setTool(name)} key={name}>{name}</button>)}</div><pre className="prompt-output" id="prompt-content" role="tabpanel" aria-labelledby={`prompt-tab-${tool}`} tabIndex={0}>{prompt}</pre><button className="primary-action" onClick={copyPrompt}>Copy {tool} prompt</button><span role="status">{copyStatus}</span><div className="all-findings"><h3>Full ranked findings</h3>{paidData.findings.map((item) => <article className="finding" key={item.id}><div><span className="mono finding-meta">{categoryLabel(item.category)} · {item.severity.toUpperCase()} IMPACT</span><h3>{item.title}</h3><p>{item.why_it_matters}</p><p><strong>Evidence:</strong> {item.evidence}</p><p><strong>Suggested fix:</strong> {item.fix}</p></div></article>)}</div></section>}
+      }}>{Object.keys(paidData.prompts).map((name) => <button type="button" role="tab" id={toolId(name)} data-tool={name} aria-controls="prompt-content" tabIndex={tool === name ? 0 : -1} aria-selected={tool === name} className={tool === name ? "active" : ""} onClick={() => setTool(name)} key={name}>{name}</button>)}</div><pre className="prompt-output" id="prompt-content" role="tabpanel" aria-labelledby={toolId(tool)} tabIndex={0}>{prompt}</pre><div className="prompt-actions"><button className="primary-action" onClick={copyPrompt}>Copy {tool} prompt</button><button className="secondary-action" onClick={downloadPrompt}>Download prompt</button></div><span role="status">{copyStatus}</span></section>}
+      <ReportSharePreview scan={scan} />
     </>}
     <footer className="wrap footer"><span>{RELEASE_CODE} — A Regular Basis release. Berlin.</span><nav className="footer-links" aria-label="Legal and navigation"><Link href="/">Run another scan</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link><Link href="/refund">Refunds</Link></nav></footer>
   </main>;

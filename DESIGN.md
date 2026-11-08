@@ -1,233 +1,187 @@
 ---
-name: RB004 Launch Score
-description: Black editorial launch reports with a chrome score and hot pink actions.
+name: VERDKT RB004
+description: Evidence-led launch reports in black, chrome, and restrained hot pink.
 colors:
-  bg: "#000"
-  surface: "#0a0a0a"
-  ink: "#fff"
-  ink-soft: "rgba(255,255,255,.78)"
-  ink-faint: "rgba(255,255,255,.56)"
-  accent: "#ff2e7e"
-  accent-strong: "#e0186a"
-  category-clarity: "#f4c95d"
-  category-conversion: "#ff2e7e"
-  category-design-brand: "#b99aff"
-  category-trust: "#62d9be"
-  category-technical: "#70bdff"
-  category-security: "#ff745e"
-  category-seo-aeo: "#70df9b"
-  separator: "rgba(255,255,255,.1)"
+  bg: "#090909"
+  surface: "#111111"
+  elevated: "#181818"
+  ink: "#F5F5F5"
+  ink-soft: "#C2C2C2"
+  ink-faint: "#A2A2A2"
+  line: "#303030"
+  accent: "#FF2E7E"
+  accent-strong: "#E91D6C"
 typography:
   display:
     fontFamily: "Inter Display, Inter Variable, Inter, sans-serif"
-    fontSize: "clamp(54px, 8.4vw, 134px)"
+    fontSize: "clamp(30px, 4vw, 48px)"
     fontWeight: 560
-    lineHeight: 0.92
-    letterSpacing: "-.04em"
+    lineHeight: 1.04
+    letterSpacing: "-.035em"
   headline:
     fontFamily: "Inter Display, Inter Variable, Inter, sans-serif"
-    fontSize: "clamp(36px, 5.4vw, 72px)"
-    fontWeight: 540
-    lineHeight: 0.98
-    letterSpacing: "-.04em"
+    fontSize: "clamp(24px, 3vw, 34px)"
+    fontWeight: 520
+    lineHeight: 1.1
+    letterSpacing: "-.035em"
   title:
     fontFamily: "Inter Display, Inter Variable, Inter, sans-serif"
-    fontSize: "clamp(23px, 3vw, 36px)"
+    fontSize: "clamp(22px, 3vw, 32px)"
     fontWeight: 520
-    lineHeight: 1.08
-    letterSpacing: "-.035em"
+    lineHeight: 1.13
+    letterSpacing: "-.025em"
   body:
     fontFamily: "Inter Display, Inter Variable, Inter, sans-serif"
-    fontSize: "17px"
-    fontWeight: 400
-    lineHeight: 1.55
-  label:
-    fontFamily: "Geist Mono Variable, SFMono-Regular, monospace"
-    fontSize: "11px"
-    fontWeight: 400
-    lineHeight: "normal"
-    letterSpacing: ".04em"
-  score:
-    fontFamily: "Inter Display, Inter Variable, Inter, sans-serif"
-    fontSize: "clamp(160px, 24vw, 292px)"
-    fontWeight: 560
-    lineHeight: 0.73
-    letterSpacing: "-.04em"
-  prompt:
-    fontFamily: "Geist Mono Variable, SFMono-Regular, monospace"
-    fontSize: "13px"
+    fontSize: "15px"
     fontWeight: 400
     lineHeight: 1.65
+  label:
+    fontFamily: "Geist Mono Variable, SFMono-Regular, monospace"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: 1.5
+    letterSpacing: ".035em"
+rounded:
+  chip: "999px"
+  card: "14px"
+  score-card: "16px"
+  action: "8px"
 spacing:
-  gap-small: "12px"
-  inline: "20px"
-  gap: "24px"
-  section-title: "42px"
+  card-inset: "clamp(22px, 3.3vw, 36px)"
+  section-inset: "clamp(42px, 6vw, 76px)"
+  section-gap: "16px"
 components:
-  button-scan:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.bg}"
-    padding: "0 20px"
-    height: "48px"
   button-primary:
     backgroundColor: "{colors.accent}"
     textColor: "{colors.bg}"
-    padding: "0 20px"
-    height: "50px"
-  button-primary-hover:
-    backgroundColor: "{colors.accent-strong}"
-  scan-field:
-    backgroundColor: "transparent"
-    textColor: "{colors.ink}"
-    height: "64px"
-  navigation:
-    textColor: "{colors.ink-faint}"
-    typography: "{typography.label}"
-  score-display:
-    typography: "{typography.score}"
-  category-reading:
-    textColor: "{colors.ink}"
-    height: "44px"
-  tool-tabs:
-    textColor: "{colors.ink-soft}"
-    padding: "0 14px"
-    height: "44px"
-  prompt-output:
+    rounded: "{rounded.action}"
+    padding: "0 18px"
+    height: "48px"
+  report-card:
     backgroundColor: "{colors.surface}"
-    textColor: "{colors.ink-soft}"
-    typography: "{typography.prompt}"
-    padding: "clamp(20px, 4vw, 40px)"
+    rounded: "{rounded.card}"
+    padding: "{spacing.card-inset}"
 ---
 
-# Design System: RB004 Launch Score
+# Design System: VERDKT RB004
 
 ## Overview
 
-**Creative North Star: "The Pinned Regular Basis Editorial World"**
+**Creative North Star: "The Evidence Ledger"**
 
-A black editorial canvas gives the page its structure through scale, whitespace, and fine horizontal rules. Inter Display carries both headlines and prose; Geist Mono identifies measurements, provenance, release information, and tool output. Hot pink remains the action color; category colors create consistent wayfinding across score and finding evidence.
+VERDKT presents a launch-page audit as a legible record: a contained score and verdict lead into prioritized findings, expandable category ledgers, and source evidence. Black surfaces, careful type hierarchy, and fine neutral rules keep attention on what the scan actually recorded. The report is compact and structured without turning into a dashboard grid.
 
-The score is the material signature: monochrome reflection bands clipped to large numerals, accompanied by a restrained pink marker. Supporting content remains flat and sparse. Rendered website captures retain their own source colors; those colors do not expand the RB004 interface palette.
+Inter Display carries findings and explanation; Geist Mono marks measurements, status, and provenance. Chrome is reserved for the score. Hot pink is the sole chromatic interface accent and marks primary actions, selected emphasis, and category tracks. The existing Regular Basis and VERDKT identity remains part of the product; captured third-party pages retain their own colors as evidence.
 
 **Key Characteristics:**
 
-- Unframed, left-aligned editorial sections.
-- Monochrome chrome scores with hot pink actions and readings.
-- Underline fields and flat rectangular controls.
-- Readable provenance, coverage, and unknown states.
+- Contained, restrained score with a chrome numeral.
+- Neutral bordered cards and open category rows.
+- Pink-only interface emphasis; readable state words accompany color.
+- Progressive disclosure keeps ledger and technical detail available.
 
 ## Colors
 
-The interface uses hot pink for actions against black, with a controlled white hierarchy and a limited category palette for report navigation. The frontmatter records applied reusable values; category colors are data roles, not decorative surfaces. Sidecar tonal ramps are synthesized OKLCH previews, not additional shipped interface colors; alpha colors keep their frontmatter values.
-
 ### Primary
 
-- **Hot Pink** (`accent`): submit and unlock actions, focused fields, and the score marker.
-- **Deep Hot Pink** (`accent-strong`): primary button hover.
-
-### Category Data Roles
-
-Use the category accent consistently for its report ring, score bar, finding label, and evidence section: clarity (`category-clarity`), conversion (`category-conversion`), design & brand (`category-design-brand`), trust (`category-trust`), technical (`category-technical`), security (`category-security`), and SEO/AEO (`category-seo-aeo`). Labels and scores remain visible so color is never the only signal.
+- **Hot Pink** (`accent`): primary actions, focus, selection, and category track fill.
+- **Deep Hot Pink** (`accent-strong`): hover treatment for primary actions.
 
 ### Neutral
 
-- **Black** (`bg`): page canvas and primary action text.
-- **Near Black** (`surface`): example report panel and prompt output.
-- **White** (`ink`): principal headings, fields, and readings.
-- **Soft White** (`ink-soft`): explanatory prose and interactive secondary text.
-- **Faint White** (`ink-faint`): metadata, captions, coverage, and footer text.
-- **Hairline White** (`separator`): repeated editorial and report row dividers. Section boundaries also use lower-opacity white rules.
+- **Near Black** (`bg`): page canvas and dark action text.
+- **Surface Black** (`surface`): score and finding card fill.
+- **Elevated Black** (`elevated`): secondary action surface.
+- **Soft White** (`ink`): principal text.
+- **Readable Grey** (`ink-soft`): supporting explanation and controls.
+- **Quiet Grey** (`ink-faint`): metadata and captions.
+- **Rule Grey** (`line`): separators, card borders, and neutral score tracks.
 
-### Named Rules
+Category labels and results use a shared pink accent rather than a different hue for each scoring category. Result wording remains explicit; color does not carry status alone.
 
-**The Action and Category Rule.** Reserve hot pink for actions and focus. Use the mapped category color only for data-linked rings, bars, finding labels, and section wayfinding; keep surfaces black and editorial.
+**The Single Accent Rule.** Keep interface color to hot pink and neutrals; colors in genuine captured sites are evidence, not VERDKT tokens.
 
 ## Typography
 
-**Display and Body Font:** Inter Display, with Inter Variable, Inter, and sans-serif fallbacks.
-**Label/Mono Font:** Geist Mono Variable, with SFMono-Regular and monospace fallbacks.
+- **Display** (560, responsive 30–48px, 1.04 line-height): Inter Display stack for the report verdict.
+- **Headline** (520, responsive 24–34px): section headings.
+- **Title** (520, responsive 22–32px): finding titles, with room to wrap long copy.
+- **Body** (400, 15px, 1.65 line-height): explanation and evidence summaries.
+- **Label** (400, 12px, 1.5 line-height, mono): result metadata and scan provenance. Smaller 10–11px metadata appears in denser ledger regions.
 
-The type is tightly spaced and large for headings, quieter and generously led for prose, and precise for data. The body currently shares the display stack; importing Inter Variable does not assign it a separate body role. The supplied normal and italic Inter Display faces declare weight 500. The frontmatter records CSS-requested role weights, not a claim that separate 400–650 Display font files exist.
+The display stack is `Inter Display, Inter Variable, Inter, sans-serif`; the mono stack is `Geist Mono Variable, SFMono-Regular, monospace`. Numeric readings use tabular figures where specified.
 
-### Hierarchy
-
-- **Display:** landing question; mobile overrides it to `clamp(49px, 14vw, 92px)` at 720px and below.
-- **Headline:** report section headings. Landing editorial headings use `clamp(38px, 6vw, 82px)` with the same tight spacing.
-- **Title:** finding titles. Report summary titles use `clamp(28px, 3vw, 44px)` and line-height 1.05.
-- **Body:** global prose; contextual explanatory text ranges from 13–20px. Paragraph measures generally span 46–68ch.
-- **Label:** release, provenance, and metadata; actual data roles range from 10–16px. Mono numeric readings use tabular figures.
-- **Score:** report numeral; at 760px and below it becomes `clamp(150px, 50vw, 220px)`. The landing example has its own `clamp(110px, 19vw, 248px)` scale.
-- **Prompt:** scrollable tool output with preserved whitespace and word wrapping.
-
-### Named Rules
-
-**The Measurement Voice Rule.** Use Geist Mono for data and provenance; use the Inter Display stack for headings and explanatory prose.
+**The Finding-First Rule.** Give the plain-language finding title visual priority; status, severity, rule identifiers, and scoring detail follow it.
 
 ## Layout
 
-The shared container is `min(100% - 2 * var(--pad), 1560px)` with automatic inline margins. The applied desktop gutter is `max(24px, calc((100vw - 1560px) / 2))`; preserve this expression when extending the existing layout. The gutter becomes 22px at 720px and below.
+The report is centered in a maximum 1180px content width with 24px desktop gutters and 18px gutters at 720px and below (14px below 360px). The opening score and verdict form a balanced two-column layout, then stack to one column on narrow screens. The score numeral scales against its own card container rather than the viewport.
 
-Landing hero, editorial headers, example panel, and report hero use twelve-column grids with asymmetric spans. The landing question occupies columns 1–10; editorial headings and supporting copy separate across the grid. Report score and summary occupy opposite halves, with categories and share controls below. Landing sections use fluid vertical space (`clamp(96px, 14vw, 190px)`); report sections use (`clamp(72px, 10vw, 130px)`). Rows and fine rules provide structure without individual cards.
+Sections use responsive vertical padding (`clamp(42px, 6vw, 76px)`) and a fine top rule. Findings are contained cards; categories remain full-width disclosure rows. Category rows show name, score, neutral track with pink fill, separate issue/review context, and an expansion affordance. Mobile rearranges these into stacked rows. Missing category scores display “Unavailable” without a numeric denominator or filled track.
 
-At 760px and below, report score, summary, categories, share controls, captures, email fields, and copy drafts stack. At 720px and below, landing headers, checks, example, pricing, and footer stack. The desktop capture pairs with a 280px mobile column; both become full-width stacked figures on small screens. Preserve the coverage note within the score overview rather than assigning it an implicit grid cell.
+The reading path is summary, prioritized findings, category overview and ledger, page/performance evidence, methodology, and paid continuation. Expandable details expose scan coverage, technical evidence, and scoring information without crowding the first view.
 
 ## Elevation & Depth
 
-Ordinary sections and controls are flat. Near-black fills separate the example and prompt output; thin white rules divide content. Depth comes from monochrome chrome reflections clipped into score text, not raised card shadows. The gradient is an explicitly authorized material exception, repeated in the share card.
+The report uses modest tonal surfaces and borders, with a restrained shadow under the score card. The chrome reflection gradient belongs to the score numeral only. Evidence rows and category ledgers use separators instead of shadows. No report glow is needed for emphasis.
 
 ### Shadow Vocabulary
 
-- **Live status glow** (`0 0 12px rgba(255,46,126,.45)`): the small active scanning dot.
-- **Score marker glow** (`0 0 18px rgba(255,46,126,.35)`): the short pink rule beneath the score.
+- **Score card** (`0 20px 48px rgba(0,0,0,.24)`): separates the opening score container from the page canvas.
 
-### Named Rules
-
-**The Chrome Score Rule.** Reserve metallic reflection gradients for score numerals. Keep ordinary surfaces flat; the small score marker and live status dot may glow.
+**The Chrome Score Rule.** Keep metallic reflections inside the contained score numeral; ordinary content remains neutral and readable.
 
 ## Shapes
 
-The system is rectangular and unframed: flat primary buttons, open editorial rows, straight underlines, and unrounded screenshot/output panels. The active status dot is circular (50% radius, 8px square). The score marker is a narrow horizontal rectangle (68px by 4px); the exported card uses a 54px by 4px marker. No rounded card vocabulary is established.
+Cards use moderately rounded corners (14px); the score overview uses a slightly softer 16px radius and primary actions use 8px. Category and evidence rows remain square-edged and separated by thin rules. Compact status chips are pill-shaped (999px). These distinct shapes identify component roles rather than rounding every surface uniformly.
 
 ## Components
 
 ### Buttons
 
-Pink rectangular buttons use black text. The scan action has a 48px minimum height; report primary actions have a 50px minimum. The frontmatter's heights represent these minimums, not fixed clipping bounds. Both use 20px inline padding, 14px text, and requested weight 650. Hover changes to deep hot pink over .2s ease; the scan button also rises 1px. Report primary actions dim to opacity .6 with a wait cursor while disabled. Global keyboard focus uses a 2px accent outline offset by 5px.
+Primary actions use hot pink, dark text, and a rounded rectangle (8px) with a 48px minimum height and 18px horizontal padding. Hover lightens the pink; keyboard focus uses a visible 2px pink outline offset by 4px. Secondary prompt actions use an elevated dark surface and neutral border. Controls and evidence links keep at least 44px touch height where defined.
+
+### Cards / Containers
+
+The score overview and findings use near-black fills, neutral borders, and moderate corners. The score overview has 16px corners and responsive padding; findings use 14px corners with `clamp(22px, 3.3vw, 36px)` padding. Category details are not placed in nested card grids.
 
 ### Inputs / Fields
 
-The URL field is transparent and joins its action above a single soft-white underline. Focus within the form changes that underline to pink. The desktop field is 64px tall, with text `clamp(18px, 2vw, 24px)`; mobile uses 58px and 17px text. Email forms repeat the transparent underline treatment with 54px inputs and 44px actions. Errors use pink text and status messages remain in normal document flow.
+The landing URL field remains an open transparent field with a bottom rule; focus changes that rule to pink. The redesign documents the report system while preserving this existing landing interaction.
 
 ### Navigation
 
-The compact release mark is pink mono beside a white product name. A faint mono release descriptor balances it across the masthead. Footer links are plain text, turn white on hover, and retain 44px minimum targets. They wrap on small screens; the footer itself stacks.
+The existing masthead retains the Regular Basis release mark, VERDKT name, and subdued release metadata. The redesign does not replace the established brand signature.
 
-### Containers and Editorial Rows
+### Score Overview
 
-The example panel and prompt output use near-black fills without outlines or rounded corners. Checks and findings use a narrow index column, heading, and prose separated by horizontal rules. The mobile check copy sits below its title; findings retain a smaller 38px index column. Preserve the distinct example provenance and measured-check notes.
+The score is a chrome numeral sized using container query units and paired with a small `/100` denominator. A subdued completion label, coverage explanation, and expandable scan details qualify the result. Unknown measurements remain unavailable rather than being converted into zero.
 
-### Score and Category Readings
+### Finding Card
 
-The chrome numeral uses the exact reflection sequence recorded in the sidecar, transparent text fill, background clipping, and tabular numerals. A faint mono denominator sits above its baseline, while the pink marker anchors it below. Category tracks are 2px lines tinted to their category role with right-aligned mono values. The score counts in over 650ms using a quartic ease-out; reduced-motion preference skips counting. The active scan dot pulses over 1.5s; reduced-motion CSS stops it.
+The reusable finding card leads with title, then category, result state, and severity. It separates why it matters, observed evidence, and next step; optional evidence links point to captured renders. A native disclosure contains technical evidence and scoring details.
 
-### Tool Tabs and Prompt Output
+### Category Row
 
-Tool tabs use transparent backgrounds and plain text with 44px minimum targets. Selection changes to pink with an underline offset 8px. Arrow keys, Home, and End move selection. The output panel uses the mono prompt role, fluid padding, a 520px maximum height, and scrolling.
+Each native details row presents category, recorded score when available, a neutral track with pink fill, and separate issue/review/unknown context. Expansion retains category findings and check results. An unrecorded score has no numeric scale or filled indicator.
+
+**The Evidence State Rule.** Distinguish confirmed issues from review and unknown states in text, and preserve their evidence inside the expanded ledger.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- Do preserve black space, large left-aligned type, and horizontal section rules.
-- Do keep provenance and unavailable-check notes readable beside the results they qualify.
-- Do use the supplied Inter Display and Geist Mono files for exported score graphics.
-- Do preserve visible pink focus outlines, keyboard tabs, 44px control targets, and reduced-motion behavior.
+- **Do** keep the score inside its card and size it against that container.
+- **Do** use pink for focused actions and category tracks, with neutral tracks and explicit labels.
+- **Do** preserve category results, check records, measurements, and methodology in progressive disclosures.
+- **Do** show unavailable scores and metrics as unavailable.
+- **Do** retain the masthead identity and original colors in captured website evidence.
 
 ### Don't:
 
-- Don't introduce additional interface hues or borrow the captured website’s palette.
-- Don't replace editorial rows with gray outlined card grids, inflated radii, or decorative icon tiles.
-- Don't flatten the chrome score to white or spread its reflection gradient into backgrounds.
-- Don't invent proof, measured values, or availability to fill a visual gap.
+- **Don't** use rainbow category colors or colored semantic states across the report.
+- **Don't** use oversized free-floating score numerals or rely on clipping to fit them.
+- **Don't** treat a completed scan as proof that every check passed.
+- **Don't** turn missing evidence into a confirmed failure or an invented measurement.
 
-Not canonized: the progress history's CSS-generated checkmark is an incumbent glyph-icon defect, not a reusable icon style. No UI repair is included in this documentation pass. Paid-state captures demonstrate mocked presentation; they do not certify production checkout, email, or provider delivery.
+Not canonized: older report rules for seven colored category accents, a monumental score outside a container, and unframed findings are superseded by the final report CSS. The checkmark generated from text in the legacy progress history remains a glyph-icon defect and is not a reusable icon rule. The final production rebuild has been recaptured in `.impeccable/review/desktop.png` and `mobile.png`; focused 390px captures cover tap-target guidance, unavailable category scores, and supplemental checks. Browser results record 29 viewport rows with zero overflow or browser errors, including unavailable score labels and Top 3 mobile evidence navigation. The example captures are labeled example report, not a live audit. No real payment or provider-flow claim is made by this visual system document.

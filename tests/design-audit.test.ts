@@ -24,8 +24,8 @@ describe("design signal audit", () => {
 
   it("keeps design fix prompts tied to cited evidence and the current palette", () => {
     const prompt = promptVariants({ url: "https://example.test", title: "A clear offer", stack: [], findings: [{ id: "design-contrast", category: "design_brand", section: "design", severity: "medium", title: "Text contrast is low in Hero", why_it_matters: "The visible hero copy is difficult to read.", evidence: "Hero — ‘A clear offer’ has 2.80:1 contrast.", fix: "Adjust the existing foreground token to reach WCAG AA." }], copyDrafts: { status: "unavailable", headlines: [], subheadline: "", cta: "", faq: "", metaTitle: "", metaDescription: "" } });
-    expect(prompt.Cursor).toContain("Design & Brand guidance");
-    expect(prompt.Cursor).toContain("Hot Pink #FF2E7E");
+    expect(prompt.Cursor).toContain("Measure the cited text and background");
+    expect(prompt.Cursor).toContain("Inspect the actual repository");
     expect(prompt.Cursor).toContain("Hero — ‘A clear offer’");
   });
 });
