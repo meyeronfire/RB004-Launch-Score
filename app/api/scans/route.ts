@@ -2,6 +2,7 @@ import { createScan, ScanAdmissionError } from "@/lib/scanner";
 import { clientIpHash, isObviousBot, rateLimit } from "@/lib/rate-limit";
 import { normalizePublicUrl, UnsafeTargetError } from "@/lib/ssrf";
 import { findCachedScan, grantPaidCacheAccess, hasLiveWorker } from "@/lib/store";
+import { isOwnerScanTarget } from "@/lib/owner-scan-access";
 import { cookieValue, DEVICE_COOKIE, deviceHash, FREE_SESSION_COOKIE, newOpaqueToken, freeStatus, PAID_RESCAN_COOKIE } from "@/lib/free-tier";
 import { ACCESS_COOKIE, verifyPaidRescanToken } from "@/lib/payments";
 import { enqueuePaidPrompt } from "@/lib/paid-prompt";
@@ -25,13 +26,10 @@ export async function POST(request: Request) {
   const deviceCookie = existingDevice ? "" : `${DEVICE_COOKIE}=${encodeURIComponent(deviceToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}`;
   try {
     const target = normalizePublicUrl((payload as { url: string }).url);
-    const ownerHosts = (process.env.RB004_OWNER_SCAN_HOSTS ?? "").split(/[\s,]+/).map((host) => host.trim().toLowerCase()).filter(Boolean);
-    const ownerBypass = ownerHosts.some((host) => target.hostname === host || target.hostname.endsWith(`.${host}`));
-    if (!ownerBypass) {
-      const limit = await rateLimit(request);
-      if (limit.misconfigured) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
-      if (!limit.allowed) return Response.json({ error: "That’s five scan requests in the past hour. Please try again later." }, { status: 429, headers: { "Retry-After": "3600" } });
-    }
+    const ownerBypass = isOwnerScanTarget(target);
+    const limit = await rateLimit(request);
+    if (limit.misconfigured) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
+    if (!limit.allowed) return Response.json({ error: "That’s five scan requests in the past hour. Please try again later." }, { status: 429, headers: { "Retry-After": "3600" } });
     const cached = await findCachedScan(target.toString());
     const rescanToken = cookieValue(request, PAID_RESCAN_COOKIE);
     const paidAccess = rescanToken ? await verifyPaidRescanToken(rescanToken, undefined, target.toString()) : undefined;
@@ -42,7 +40,7 @@ export async function POST(request: Request) {
     }
     const canUseCache = Boolean(cached);
     if (!canUseCache && process.env.NODE_ENV === "production" && !(await hasLiveWorker())) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
-    const scan = cached ?? await createScan(target.toString(), { paid: Boolean(paidAccess) || ownerBypass, paidRescanExpiresAt: paidAccess?.expires_at.toISOString(), freeAdmission: ownerBypass || paidAccess ? undefined : { device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined } });
+    const scan = cached ?? await createScan(target.toString(), { paid: Boolean(paidAccess), paidRescanExpiresAt: paidAccess?.expires_at.toISOString(), freeAdmission: paidAccess ? undefined : { device: clientDeviceHash, ip: rawIpHash, sessionToken: ownerBypass ? undefined : cookieValue(request, FREE_SESSION_COOKIE) || undefined, skipIdentityLimits: ownerBypass } });
     const status = ownerBypass || paidAccess ? undefined : await freeStatus({ device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined });
     const response = Response.json({ id: scan.id, status: scan.status, remaining: status?.remaining ?? null, cached: canUseCache }, { status: 202, headers: { "Cache-Control": "no-store" } });
     if (deviceCookie) response.headers.append("Set-Cookie", deviceCookie);

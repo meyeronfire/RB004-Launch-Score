@@ -56,16 +56,17 @@ export async function freeStatus(input: { device: string; ip: string; sessionTok
 }
 
 export async function freeBudgetStatus() {
-  const sql = database(); if (!sql) return { paused: false, spentUsd: 0, budgetUsd: budgetLimit() };
+  const sql = database(); if (!sql) return { paused: process.env.NODE_ENV === "production", spentUsd: 0, budgetUsd: budgetLimit() };
   const rows = await sql<{ spent: number }[]>`SELECT COALESCE((SELECT sum(estimated_usd) FROM scan_costs WHERE created_at>=date_trunc('day',now()) AND NOT paid),0)
     + COALESCE((SELECT sum(reserved_usd) FROM free_scan_claims WHERE created_at>=date_trunc('day',now())),0) AS spent`;
   const spentUsd = Number(rows[0]?.spent ?? 0);
   return { paused: !freeBudgetDecision(spentUsd, FREE_BUDGET_RESERVATION_USD, budgetLimit()).allowed, spentUsd, budgetUsd: budgetLimit() };
 }
 
-export async function reserveFreeScan(input: { scanId: string; device: string; ip: string; sessionToken?: string }) {
+export async function reserveFreeScan(input: { scanId: string; device: string; ip: string; sessionToken?: string; skipIdentityLimits?: boolean }) {
   const sql = database();
   if (!sql) {
+    if (input.skipIdentityLimits) return { allowed: false, remaining: 0, requiresEmail: false, authenticated: false, budgetPaused: true };
     const status = await freeStatus({ ...input });
     if (!status.allowed) return { ...status, budgetPaused: false };
     const identity = input.sessionToken ? localSessions.get(hashOpaqueToken(input.sessionToken)) : undefined;
@@ -79,6 +80,11 @@ export async function reserveFreeScan(input: { scanId: string; device: string; i
       + COALESCE((SELECT sum(reserved_usd) FROM free_scan_claims WHERE created_at>=date_trunc('day',now())),0) AS spent`;
     const budget = freeBudgetDecision(Number(totals[0]?.spent ?? 0), FREE_BUDGET_RESERVATION_USD, budgetLimit());
     if (!budget.allowed) return { allowed: false, remaining: 0, requiresEmail: false, authenticated: false, budgetPaused: true, spentUsd: budget.spentUsd, budgetUsd: budget.budgetUsd };
+    if (input.skipIdentityLimits) {
+      const identity = hash(`rb004-public-free-scan:${input.scanId}`);
+      await tx`INSERT INTO free_scan_claims (scan_id,device_hash,ip_hash,reserved_usd) VALUES (${input.scanId},${identity},${identity},${FREE_BUDGET_RESERVATION_USD})`;
+      return { allowed: true, remaining: 0, requiresEmail: false, authenticated: false, budgetPaused: false };
+    }
     let email: { email_hash: string; scans_used: number } | undefined;
     if (input.sessionToken) {
       const rows = await tx<{ email_hash: string; scans_used: number }[]>`SELECT e.email_hash,e.scans_used FROM free_scan_sessions s JOIN free_scan_entitlements e USING (email_hash)

@@ -13,8 +13,33 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
   const [notice, setNotice] = useState("");
   const [remaining, setRemaining] = useState<number | null>(null);
   const [paidRescan, setPaidRescan] = useState(false);
+  const [ownerAccess, setOwnerAccess] = useState(false);
+  const [targetUrl, setTargetUrl] = useState(initialUrl);
   const router = useRouter();
-  useEffect(() => { fetch("/api/free-access", { cache: "no-store" }).then(async (response) => response.ok ? response.json() as Promise<{ remaining?: number; requiresEmail?: boolean; budgetPaused?: boolean; paidRescanAvailable?: boolean }> : undefined).then((result) => { if (result?.remaining !== undefined) setRemaining(result.remaining); if (result?.paidRescanAvailable) setPaidRescan(true); else if (result?.requiresEmail) setNeedsEmail(true); if (!result?.paidRescanAvailable && result?.budgetPaused) setWaitlistMode(true); }).catch(() => undefined); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      const query = targetUrl ? `?url=${encodeURIComponent(targetUrl)}` : "";
+      fetch(`/api/free-access${query}`, { cache: "no-store", signal: controller.signal }).then(async (response) => response.ok ? response.json() as Promise<{ remaining?: number | null; requiresEmail?: boolean; budgetPaused?: boolean; paidRescanAvailable?: boolean; hostAccess?: boolean }> : undefined).then((result) => {
+        if (!result) return;
+        const hostTarget = Boolean(result.hostAccess);
+        const hostEnabled = hostTarget && !Boolean(result.budgetPaused);
+        const paid = Boolean(result.paidRescanAvailable);
+        setOwnerAccess(hostEnabled);
+        setPaidRescan(paid);
+        if (hostTarget) {
+          setRemaining(result.remaining ?? null);
+          setNeedsEmail(false);
+          setWaitlistMode(!paid && Boolean(result.budgetPaused));
+        } else {
+          if (result.remaining !== undefined) setRemaining(result.remaining);
+          setNeedsEmail(Boolean(result.requiresEmail));
+          setWaitlistMode(!paid && Boolean(result.budgetPaused));
+        }
+      }).catch(() => undefined);
+    }, 200);
+    return () => { window.clearTimeout(timeout); controller.abort(); };
+  }, [targetUrl]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
@@ -48,7 +73,7 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
   return <>
     <form className={`scan-form${needsEmail ? " scan-form--access" : ""}${waitlistMode ? " scan-form--waitlist" : ""}`} onSubmit={submit}>
     <label className="sr-only" htmlFor="scan-url">Page URL</label>
-    <input id="scan-url" name="url" type="text" inputMode="url" autoComplete="url" placeholder="Paste your page URL" defaultValue={initialUrl} required={!(needsEmail || waitlistMode)} aria-describedby="scan-error" />
+    <input id="scan-url" name="url" type="text" inputMode="url" autoComplete="url" placeholder="Paste your page URL" value={targetUrl} onChange={(event) => setTargetUrl(event.currentTarget.value)} required={!(needsEmail || waitlistMode)} aria-describedby="scan-error" />
     {!(needsEmail || waitlistMode) && <input className="scan-honeypot" name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" />}
     <button type="submit" name="mode" value="scan" disabled={pending}>{pending ? "Starting…" : waitlistMode ? "Join waitlist" : submitLabel}</button>
     {(needsEmail && !waitlistMode) && <>
@@ -60,7 +85,8 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     <span id="scan-error" className="sr-only" role="alert">{error}</span>
     {error && <span className="form-error" role="alert">{error}</span>}
     </form>
-    {(remaining !== null && !needsEmail && !waitlistMode && !paidRescan) && <p className="microcopy free-scan-remaining">{remaining} free scan{remaining === 1 ? "" : "s"} left</p>}
+    {(ownerAccess && !paidRescan) && <p className="microcopy free-scan-remaining">Free scanning enabled for this site</p>}
+    {(remaining !== null && !needsEmail && !waitlistMode && !paidRescan && !ownerAccess) && <p className="microcopy free-scan-remaining">{remaining} free scan{remaining === 1 ? "" : "s"} left</p>}
     {(needsEmail || waitlistMode) && <p className="microcopy free-access-copy">{waitlistMode ? "Free scans are paused for today, back tomorrow." : "One free scan is used. Verify your email to unlock two more, with three free scans per email."}</p>}
     {notice && <p className="microcopy free-access-notice" role="status">{notice}</p>}
   </>;

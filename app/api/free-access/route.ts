@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { clientIpHash, rateLimit } from "@/lib/rate-limit";
 import { addFreeWaitlist, cookieValue, deviceHash, DEVICE_COOKIE, freeBudgetStatus, freeStatus, FREE_SESSION_COOKIE, newOpaqueToken, PAID_RESCAN_COOKIE, requestFreeMagicLink } from "@/lib/free-tier";
+import { isOwnerScanTarget } from "@/lib/owner-scan-access";
 import { verifyPaidRescanToken } from "@/lib/payments";
 import { readBoundedBody } from "@/lib/http";
 
@@ -19,9 +20,12 @@ export async function GET(request: Request) {
   const ip = clientIpHash(request);
   if (!ip) return Response.json({ error: "Free scan access is temporarily unavailable. Please try again later." }, { status: 503 });
   const client = device(request);
+  const requestedTarget = new URL(request.url).searchParams.get("url");
+  let hostAccess = false;
+  if (requestedTarget) { try { hostAccess = isOwnerScanTarget(new URL(requestedTarget)); } catch { /* Invalid targets are checked again when submitted. */ } }
   const paidToken = cookieValue(request, PAID_RESCAN_COOKIE);
   const [status, budget, paidAccess] = await Promise.all([freeStatus({ device: client.hash, ip, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) }), freeBudgetStatus(), paidToken ? verifyPaidRescanToken(paidToken) : undefined]);
-  const response = Response.json({ ...status, budgetPaused: budget.paused, paidRescanAvailable: Boolean(paidAccess) }, { headers: { "Cache-Control": "no-store" } });
+  const response = Response.json({ ...status, ...(hostAccess ? { allowed: !budget.paused, remaining: budget.paused ? 0 : null, requiresEmail: false } : {}), budgetPaused: budget.paused, paidRescanAvailable: Boolean(paidAccess), hostAccess }, { headers: { "Cache-Control": "no-store" } });
   if (client.cookie) response.headers.append("Set-Cookie", client.cookie);
   return response;
 }

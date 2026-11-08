@@ -18,6 +18,7 @@ import { ScanRequestBudget, withRequestBudget, currentRequestBudget } from "./re
 import { auditFinding, detectFrontendSecrets, extractSameOriginApiRoutes, formFindings, inspectExposedFiles, leftoverFindings, securityFindings, seoFindings, type ScriptSource } from "./depth-checks";
 import { calculateAuditCounts } from "./audit-counts";
 import { releaseFreeScanReservation, reserveFreeScan, settleScanCost } from "./free-tier";
+import { isOwnerScanRedirectAllowed, isOwnerScanTarget } from "./owner-scan-access";
 
 const asDataUrl = (buffer: Buffer) => `data:image/jpeg;base64,${buffer.toString("base64")}`;
 const now = () => new Date().toISOString();
@@ -236,17 +237,28 @@ function stackHints(html: string) {
   return tests.filter(([, pattern]) => pattern.test(html)).map(([name]) => name);
 }
 
-async function pageCapture(context: BrowserContext, url: string, mobile: boolean, requestCounter: { count: number; bytes: number; active: number; waiting: Array<() => void>; buckets: Record<"script" | "style" | "image" | "font" | "other", number>; largest: Array<{ url: string; bytes: number; type: string }> }, budget: ScanRequestBudget) {
+async function pageCapture(context: BrowserContext, url: string, mobile: boolean, requestCounter: { count: number; bytes: number; active: number; waiting: Array<() => void>; buckets: Record<"script" | "style" | "image" | "font" | "other", number>; largest: Array<{ url: string; bytes: number; type: string }> }, budget: ScanRequestBudget, restrictOwnerNavigation = false) {
   await context.route("**/*", async (route) => {
     const request = route.request(); const target = request.url();
     if (["data:", "blob:", "about:"].some((prefix) => target.startsWith(prefix))) return route.continue();
+    let mainFrameNavigation = false;
+    if (restrictOwnerNavigation && request.isNavigationRequest()) {
+      try { mainFrameNavigation = request.frame().parentFrame() === null; } catch { return route.abort("blockedbyclient"); }
+      if (mainFrameNavigation) {
+        try { if (!isOwnerScanTarget(new URL(target))) return route.abort("blockedbyclient"); } catch { return route.abort("blockedbyclient"); }
+      }
+    }
     if (request.method() !== "GET" || requestCounter.count >= 48 || requestCounter.bytes >= 16_000_000 || budget.remaining <= 6) return route.abort("blockedbyclient");
     requestCounter.count++;
     if (requestCounter.active >= 6) await new Promise<void>((resolve) => requestCounter.waiting.push(resolve));
     requestCounter.active++;
     try {
       await assertRobotsAllows(new URL(target));
-      const response = await safeFetch(target, { timeoutMs: 5_000, maxBytes: 1_500_000, maxRedirects: 3, beforeRedirect: assertRobotsAllows, budget });
+      const beforeRedirect = async (redirect: URL) => {
+        if (mainFrameNavigation && !isOwnerScanRedirectAllowed(new URL(target), redirect)) throw new UnsafeTargetError("This free scan cannot follow a redirect outside an enabled host.");
+        await assertRobotsAllows(redirect);
+      };
+      const response = await safeFetch(target, { timeoutMs: 5_000, maxBytes: 1_500_000, maxRedirects: 3, beforeRedirect, budget });
       if (response.redirects.length) return route.fulfill({ status: 302, headers: { location: response.redirects[0] } });
       if (requestCounter.bytes + response.body.length > 16_000_000) return route.abort("blockedbyclient");
       requestCounter.bytes += response.body.length;
@@ -388,7 +400,12 @@ async function processScanCore(id: string, leaseToken?: string) {
     if (policy.blocked) throw new UnsafeTargetError("This page is disallowed by its robots.txt file.");
     await phase(id, "Rendering the desktop page…", leaseToken);
     const ttfbStartedAt = Date.now();
-    const initial = await safeFetch(target.toString(), { timeoutMs: 10_000, maxBytes: 5_000_000, maxRedirects: 4, beforeRedirect: assertRobotsAllows });
+    const restrictOwnerNavigation = isOwnerScanTarget(target);
+    const beforeRedirect = async (redirect: URL) => {
+      if (restrictOwnerNavigation && !isOwnerScanRedirectAllowed(target, redirect)) throw new UnsafeTargetError("This free scan cannot follow a redirect outside an enabled host.");
+      await assertRobotsAllows(redirect);
+    };
+    const initial = await safeFetch(target.toString(), { timeoutMs: 10_000, maxBytes: 5_000_000, maxRedirects: 4, beforeRedirect });
     const ttfbMs = Date.now() - ttfbStartedAt;
     if ([401, 403, 429].includes(initial.status)) throw new SafeFetchError("This site is blocking automated review.");
     if (initial.status === 404) throw new SafeFetchError("HTTP 404: page not found.");
@@ -426,12 +443,12 @@ async function processScanCore(id: string, leaseToken?: string) {
       await desktopContext.addInitScript("window.__name = function(fn, name) { try { Object.defineProperty(fn, \"name\", { value: name, configurable: true }); } catch (e) {} return fn; };");
       await desktopContext.addInitScript("window.__rbSpeed = { lcp: 0, cls: 0 }; try { new PerformanceObserver(function(l){ for (var i=0;i<l.getEntries().length;i++) window.__rbSpeed.lcp = l.getEntries()[i].startTime; }).observe({ type: 'largest-contentful-paint', buffered: true }); } catch (e) {} try { new PerformanceObserver(function(l){ for (var i=0;i<l.getEntries().length;i++) if (!l.getEntries()[i].hadRecentInput) window.__rbSpeed.cls += l.getEntries()[i].value; }).observe({ type: 'layout-shift', buffered: true }); } catch (e) {}");
       await desktopContext.routeWebSocket("**/*", (socket) => socket.close({ code: 1008, reason: "WebSockets are disabled during scanning." }));
-      desktop = await pageCapture(desktopContext, finalUrl.toString(), false, counter, requestBudget); await desktopContext.close();
+      desktop = await pageCapture(desktopContext, finalUrl.toString(), false, counter, requestBudget, restrictOwnerNavigation); await desktopContext.close();
       await phase(id, "Rendering the mobile page…", leaseToken);
       const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, ignoreHTTPSErrors: false, serviceWorkers: "block" });
       await mobileContext.addInitScript("window.__name = function(fn, name) { try { Object.defineProperty(fn, \"name\", { value: name, configurable: true }); } catch (e) {} return fn; };");
       await mobileContext.routeWebSocket("**/*", (socket) => socket.close({ code: 1008, reason: "WebSockets are disabled during scanning." }));
-      mobile = await pageCapture(mobileContext, finalUrl.toString(), true, counter, requestBudget); await mobileContext.close();
+      mobile = await pageCapture(mobileContext, finalUrl.toString(), true, counter, requestBudget, restrictOwnerNavigation); await mobileContext.close();
     } finally { signal?.removeEventListener("abort", closeBrowser); browserMs += Date.now() - browserStartedAt; await browser.close(); }
     if (signal?.aborted) throw new SafeFetchError(scanTimeLimitMessage(true));
     const snap = desktop.snapshot; const mobileSnap = mobile.snapshot;
@@ -628,7 +645,7 @@ export class ScanAdmissionError extends Error {
   constructor(readonly code: "email_required" | "free_paused" | "free_limit", message: string) { super(message); this.name = "ScanAdmissionError"; }
 }
 
-export async function createScan(url: string, options: { paid?: boolean; paidRescanExpiresAt?: string; freeAdmission?: { device: string; ip: string; sessionToken?: string } } = {}): Promise<ScanRecord> {
+export async function createScan(url: string, options: { paid?: boolean; paidRescanExpiresAt?: string; freeAdmission?: { device: string; ip: string; sessionToken?: string; skipIdentityLimits?: boolean } } = {}): Promise<ScanRecord> {
   const target = normalizePublicUrl(url);
   const cached = options.paid ? undefined : await findCachedScan(target.toString());
   if (cached) return cached;
