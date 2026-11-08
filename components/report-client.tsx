@@ -154,13 +154,13 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
       setCheckoutPending(false);
     }
   }
-  async function retryLighthouse() {
+  async function retryLighthouse(strategy: "mobile" | "desktop") {
     try {
-      const response = await fetch(`/api/scans/${encodeURIComponent(id)}/lighthouse`, { method: "POST", cache: "no-store" });
+      const response = await fetch(`/api/scans/${encodeURIComponent(id)}/lighthouse`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ strategy }), cache: "no-store" });
       const result = await response.json();
       if (result.report) setScan(result.report);
-      return response.ok && !result.unavailable;
-    } catch { return false; }
+      return response.ok && !result.unavailable ? null : result.message ?? result.error ?? `PageSpeed could not return ${strategy} results. Try again later.`;
+    } catch { return "Could not contact PageSpeed. Check your connection and try again."; }
   }
   async function submitLead(form: FormData) {
     setEmailStatus("");

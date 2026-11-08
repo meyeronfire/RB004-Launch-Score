@@ -29,7 +29,7 @@ let persisted: ScanRecord;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  persisted = { id: scanId, status: "complete", leaseToken: "lease-existing", findings: [], checks: {}, score: 80 } as unknown as ScanRecord;
+  persisted = { id: scanId, url: "https://example.com/", status: "complete", leaseToken: "lease-existing", findings: [], checks: {}, score: 80, lighthouse: { mobile: strategy(71), desktop: strategy(74), source: "via Google PageSpeed Insights" } } as unknown as ScanRecord;
   mocks.rateLimit.mockResolvedValue({ allowed: true, misconfigured: false });
   mocks.claimScopedCooldown.mockResolvedValue(true);
   mocks.readScan.mockImplementation(async () => persisted);
@@ -44,18 +44,21 @@ beforeEach(() => {
 });
 
 describe("Lighthouse retry route", () => {
-  it("persists fresh PageSpeed data using the completed report's current lease", async () => {
+  it.each([["mobile", 88, 74], ["desktop", 91, 71]] as const)("refreshes only the requested %s strategy and keeps the other strategy", async (selected, freshScore, existingOtherScore) => {
     const request = new Request(`https://rb004.vercel.app/api/scans/${scanId}/lighthouse`, {
-      method: "POST", headers: { origin: "https://rb004.vercel.app" },
+      method: "POST", headers: { origin: "https://rb004.vercel.app", "content-type": "application/json" }, body: JSON.stringify({ strategy: selected }),
     });
     const response = await POST(request, { params: Promise.resolve({ id: scanId }) });
+    const other = selected === "mobile" ? "desktop" : "mobile";
 
     expect(response.status).toBe(200);
+    expect(mocks.psiMetrics).toHaveBeenCalledTimes(1);
+    expect(mocks.psiMetrics).toHaveBeenCalledWith("https://example.com/", selected);
     expect(mocks.updateScan).toHaveBeenCalledWith(scanId, expect.any(Function), "lease-existing");
-    expect(persisted.lighthouse?.mobile.seo).toEqual(metric(88));
-    expect(persisted.lighthouse?.desktop.performance).toEqual(metric(91));
+    expect(persisted.lighthouse?.[selected].seo).toEqual(metric(freshScore));
+    expect(persisted.lighthouse?.[other].performance).toEqual(metric(existingOtherScore));
     const body = await response.json();
-    expect(body.report.lighthouse.mobile.seo).toEqual(metric(88));
+    expect(body.report.lighthouse[selected].seo).toEqual(metric(freshScore));
     expect(JSON.stringify(body)).not.toContain("lease-existing");
   });
 });

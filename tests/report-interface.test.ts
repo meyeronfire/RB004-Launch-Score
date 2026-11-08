@@ -56,7 +56,7 @@ const scan = {
 } as unknown as Parameters<typeof TechnicalReportSections>[0]["scan"];
 
 const renderReport = (paidFindings?: Finding[]) => renderToStaticMarkup(React.createElement(TechnicalReportSections, {
-  scan, paidFindings, onRetryLighthouse: async () => false, onUnlock: () => {},
+  scan, paidFindings, onRetryLighthouse: async () => null, onUnlock: () => {},
   checkoutPending: false, checkoutMessage: "", checkoutSection: "",
 }));
 

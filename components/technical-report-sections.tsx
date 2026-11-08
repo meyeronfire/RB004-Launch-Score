@@ -55,10 +55,11 @@ function EvidenceRows({ rows }: { rows: Array<{ label: string; value?: string | 
   return <div className="check-evidence">{rows.map((row) => <div key={row.label}><span className="mono">{row.label}</span><strong className={`mono${row.ok === true ? " ok" : row.ok === false ? " bad" : ""}`}>{row.value === undefined || row.value === "" ? "Unavailable" : String(row.value)}</strong></div>)}</div>;
 }
 
-export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse, onUnlock, checkoutPending, checkoutMessage, checkoutSection }: { scan: ReportView; paidFindings?: Finding[]; onRetryLighthouse: () => Promise<boolean>; onUnlock: (section: string) => void; checkoutPending: boolean; checkoutMessage: string; checkoutSection: string }) {
+export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse, onUnlock, checkoutPending, checkoutMessage, checkoutSection }: { scan: ReportView; paidFindings?: Finding[]; onRetryLighthouse: (strategy: "mobile" | "desktop") => Promise<string | null>; onUnlock: (section: string) => void; checkoutPending: boolean; checkoutMessage: string; checkoutSection: string }) {
   const [strategy, setStrategy] = useState<"mobile" | "desktop">("mobile");
   const [retrying, setRetrying] = useState(false);
   const [retryFailed, setRetryFailed] = useState(false);
+  const [retryMessage, setRetryMessage] = useState("");
   const [shareVariant, setShareVariant] = useState<ShareVariant>("score");
   const [shareFormat, setShareFormat] = useState<ShareFormat>("og");
   const lighthouse = scan.lighthouse?.[strategy];
@@ -70,17 +71,17 @@ export function TechnicalReportSections({ scan, paidFindings, onRetryLighthouse,
   const aeoRows = checkLedger.filter((row) => row.category === "SEO / AEO");
   const aeoCounts = aeoRows.reduce<Record<CheckStatus, number>>((counts, row) => ({ ...counts, [row.status]: counts[row.status] + 1 }), { pass: 0, issue: 0, review: 0, unknown: 0, not_applicable: 0, measured: 0 });
   const crawlerCounts = scan.aiCrawlerReport?.policies.reduce((counts, bot) => ({ ...counts, [bot.policy]: counts[bot.policy] + 1 }), { allowed: 0, blocked: 0, no_matching_rule: 0, unknown: 0 });
-  async function retryLighthouse() { setRetrying(true); setRetryFailed(false); const ok = await onRetryLighthouse(); setRetrying(false); setRetryFailed(!ok); }
+  async function retryLighthouse() { setRetrying(true); setRetryFailed(false); setRetryMessage(""); const message = await onRetryLighthouse(strategy); setRetryMessage(message ?? ""); setRetrying(false); setRetryFailed(Boolean(message)); }
 
   return <>
     <section className="wrap depth-section lighthouse-section" data-category="technical" style={{ "--category-accent": categoryAccent("technical") } as CSSProperties} aria-labelledby="lighthouse-title">
       <div className="report-section-title"><h2 id="lighthouse-title">Lighthouse.</h2><div className="report-aside"><span className="mono">TECHNICAL · {countLabel(scan.findingCounts?.technical).toUpperCase()}</span><span className="mono">{scan.lighthouse?.source ?? "via Google PageSpeed Insights"}</span></div></div>
       <div className="lighthouse-toggle" role="group" aria-label="Lighthouse device strategy">{(["mobile", "desktop"] as const).map((name) => <button type="button" key={name} aria-pressed={strategy === name} className={strategy === name ? "active" : ""} onClick={() => setStrategy(name)}>{name}</button>)}</div>
       <GlassCard className="lighthouse-glass" shellClassName="lighthouse-glass-shell">
-      {lighthouseUnavailable ? <div className="lighthouse-unavailable"><div><p className="mono">{strategy} PageSpeed metrics are unavailable.</p><p>{lighthouseNote ?? "No result was recorded for this strategy. Retry to request fresh measurements."}</p></div><button className="inline-unlock" type="button" onClick={() => void retryLighthouse()} disabled={retrying}>{retrying ? "Retrying…" : "Retry Lighthouse"}</button>{retryFailed && <span className="mono" role="status">Still unavailable. Try again later.</span>}</div> : <>
+      {lighthouseUnavailable ? <div className="lighthouse-unavailable"><div><p className="mono">{strategy} PageSpeed metrics are unavailable.</p><p>{lighthouseNote ?? "No result was recorded for this strategy. Retry to request fresh measurements."}</p></div><button className="inline-unlock" type="button" onClick={() => void retryLighthouse()} disabled={retrying}>{retrying ? "Retrying…" : "Retry Lighthouse"}</button>{retryFailed && <span className="mono" role="status">{retryMessage || "PageSpeed could not return results. Try again later."}</span>}</div> : <>
         <div className="lighthouse-scores" aria-label={`${strategy} Lighthouse scores`}>{strategies.map(([key, label]) => <div className="lighthouse-score" key={key}><span className="mono">{label}</span><strong className="mono">{displayCheck(lighthouse?.[key])}</strong></div>)}</div>
         <div className="vitals-row"><div><span className="mono">LCP</span><strong className="mono">{displayCheck(lighthouse?.lcp)}</strong></div><div><span className="mono">CLS</span><strong className="mono">{displayCheck(lighthouse?.cls)}</strong></div><div><span className="mono">INP / TBT</span><strong className="mono">{displayCheck(lighthouse?.inpTbt)}</strong></div></div>
-        {lighthouseHasUnknown && <div className="lighthouse-metric-retry"><span className="mono">Some Lighthouse metrics are unavailable.</span><button className="inline-unlock" type="button" onClick={() => void retryLighthouse()} disabled={retrying}>{retrying ? "Retrying…" : "Retry Lighthouse"}</button>{retryFailed && <span className="mono" role="status">Still unavailable. Try again later.</span>}</div>}
+        {lighthouseHasUnknown && <div className="lighthouse-metric-retry"><span className="mono">Some Lighthouse metrics are unavailable.</span><button className="inline-unlock" type="button" onClick={() => void retryLighthouse()} disabled={retrying}>{retrying ? "Retrying…" : "Retry Lighthouse"}</button>{retryFailed && <span className="mono" role="status">{retryMessage || "PageSpeed could not return results. Try again later."}</span>}</div>}
       </>}
       </GlassCard>
     </section>
