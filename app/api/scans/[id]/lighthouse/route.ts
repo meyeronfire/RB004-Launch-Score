@@ -8,6 +8,7 @@ const inFlight = new Set<string>();
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export async function POST(request: Request, context: RouteContext<"/api/scans/[id]/lighthouse">) {
   const limit = await rateLimit(request, "lighthouse-retry");

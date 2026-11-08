@@ -626,3 +626,51 @@ button, input { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .category-ring-value, .progress-ring-value { transition: none; }
 }
+
+.ai-crawler-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); max-width: 1000px; margin: 22px 0 28px; border-block: 1px solid var(--line); }
+.ai-crawler-summary > div { min-width: 0; display: grid; align-content: start; gap: 9px; padding: 14px 12px 14px 0; }
+.ai-crawler-summary span { color: var(--ink-faint); font-size: 10px; line-height: 1.35; }
+.ai-crawler-summary strong { color: var(--ink); font-size: 22px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.aeo-readiness { max-width: 1000px; margin: 30px 0 36px; }
+.aeo-readiness-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 24px; margin-bottom: 14px; }
+.aeo-readiness-heading h3 { margin: 0; font-size: clamp(20px, 2.2vw, 28px); font-weight: 520; letter-spacing: -.03em; }
+.aeo-readiness-heading > .mono { color: var(--ink-faint); font-size: 10px; }
+.aeo-readiness-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 26px; border-top: 1px solid var(--line); }
+.aeo-readiness-item { min-width: 0; padding: 14px 0 15px; border-bottom: 1px solid var(--line); }
+.aeo-readiness-item > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 12px; }
+.aeo-readiness-item strong { font-size: 13px; font-weight: 520; }
+.aeo-readiness-item .mono { color: var(--ink-faint); font-size: 9px; }
+.aeo-readiness-item .check-ledger-status--issue { color: var(--accent) !important; }
+.aeo-readiness-item .check-ledger-status--pass { color: #6ee7a8 !important; }
+.aeo-readiness-item p { margin: 7px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.depth-finding { max-width: 1000px; margin: 0 0 30px; padding: 22px 0 28px; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+.depth-finding h3 { margin: 0 0 19px; font-size: clamp(22px, 2.8vw, 34px); line-height: 1.1; letter-spacing: -.03em; font-weight: 520; }
+.finding-meta-row, .finding-meta-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.finding-meta-row { justify-content: space-between; margin-bottom: 17px; }
+.finding-meta-tags .finding-index, .finding-meta-tags .finding-status, .finding-meta-tags .finding-category, .finding-meta-tags .finding-priority, .finding-rule-loss { font: 10px/1.4 var(--mono); letter-spacing: .035em; }
+.finding-meta-tags .finding-index, .finding-meta-tags .finding-status, .finding-rule-loss { color: var(--accent); }
+.finding-meta-tags .finding-category, .finding-meta-tags .finding-priority { color: var(--ink-faint); }
+.finding-rule-loss { white-space: nowrap; }
+.finding-info-grid, .finding-correction-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 24px; }
+.finding-info-grid { padding: 18px 0; border-block: 1px solid var(--line); }
+.finding-correction-grid { grid-template-columns: minmax(0, 1.4fr) minmax(180px, .6fr); padding-top: 18px; }
+.finding-info-grid section, .finding-correction-grid section { min-width: 0; }
+.finding-info-grid h4, .finding-correction-grid h4 { margin: 0 0 8px; color: var(--ink-faint); font: 10px/1.4 var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+.finding-info-grid p, .finding-correction-grid p { max-width: 72ch; margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.finding-info-grid strong, .finding-correction-grid strong { color: var(--ink); }
+.finding-unlock-link { margin: 16px 0 0; font-size: 12px; }
+.finding-unlock-link a { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
+.lighthouse-unavailable > div { display: grid; gap: 6px; }
+.lighthouse-unavailable > div p + p { color: var(--ink-soft); }
+
+@media (max-width: 760px) {
+  .ai-crawler-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .aeo-readiness-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+  .finding-info-grid, .finding-correction-grid { grid-template-columns: 1fr; gap: 18px; }
+}
+
+@media (max-width: 440px) {
+  .ai-crawler-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .aeo-readiness-grid { grid-template-columns: 1fr; }
+  .finding-meta-row { align-items: flex-start; flex-direction: column; }
+}

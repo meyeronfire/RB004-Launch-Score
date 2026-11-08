@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { scanFailureMessage } from "../lib/scanner";
+import { scanFailureMessage, scanTimeLimitMessage } from "../lib/scanner";
 import { SafeFetchError } from "../lib/ssrf";
 
 describe("scan failure messages", () => {
+  it("uses the configured scan wall limit in internal timeout diagnostics", () => {
+    expect(scanTimeLimitMessage()).toBe("The scan exceeded its 105-second time limit.");
+  });
+
   it("explains common public scan failures and avoids internal error details", () => {
     expect(scanFailureMessage(new SafeFetchError("The page took too long to respond."))).toMatch(/too long to respond/i);
     expect(scanFailureMessage(new SafeFetchError("This site is blocking automated review."))).toMatch(/blocking automated review/i);

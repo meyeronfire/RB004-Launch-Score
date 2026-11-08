@@ -53,7 +53,7 @@ export async function claimNextScan() {
     const rows = await sql<{ id: string; lease_token: string }[]>`WITH candidate AS (
       SELECT id FROM scans WHERE status='queued' OR (status='scanning' AND (lease_expires_at IS NULL OR lease_expires_at < now()))
       ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1
-    ) UPDATE scans SET status='scanning',phase='Starting scan…',updated_at=now(),lease_token=${leaseToken},lease_expires_at=now()+interval '2 minutes',
+    ) UPDATE scans SET status='scanning',phase='Starting scan…',updated_at=now(),lease_token=${leaseToken},lease_expires_at=now()+interval '3 minutes',
       payload=jsonb_set(jsonb_set(jsonb_set(payload,'{status}','"scanning"'::jsonb),'{phase}','"Starting scan…"'::jsonb),'{leaseToken}',to_jsonb(${leaseToken}::text))
       FROM candidate WHERE scans.id=candidate.id RETURNING scans.id,scans.lease_token`;
     return rows[0] ? { id: rows[0].id, leaseToken: rows[0].lease_token } : undefined;

@@ -22,7 +22,15 @@ import { releaseFreeScanReservation, reserveFreeScan, settleScanCost } from "./f
 const asDataUrl = (buffer: Buffer) => `data:image/jpeg;base64,${buffer.toString("base64")}`;
 const now = () => new Date().toISOString();
 const running = new Set<string>();
-const SCAN_WALL_LIMIT_MS = 90_000;
+const SCAN_WALL_LIMIT_MS = 105_000;
+export function keepPromiseObserved<T>(promise: Promise<T>): Promise<T> {
+  void promise.catch(() => undefined);
+  return promise;
+}
+export function scanTimeLimitMessage(pleaseRetry = false) {
+  const message = `The scan exceeded its ${Math.ceil(SCAN_WALL_LIMIT_MS / 1000)}-second time limit.`;
+  return pleaseRetry ? `${message} Please try again later.` : message;
+}
 
 async function phase(id: string, name: string, leaseToken?: string) {
   await updateScan(id, (scan) => ({ ...scan, status: "scanning", phaseHistory: scan.phase !== name ? [...(scan.phaseHistory ?? []), scan.phase].filter((value, index, all) => value && all.indexOf(value) === index) : scan.phaseHistory, phase: name, updatedAt: now() }), leaseToken);
@@ -323,18 +331,19 @@ async function checkStatus(urls: string[]) {
 
 type PsiStrategy = import("./types").LighthouseStrategy;
 const missingPsiStrategy = (note: string): PsiStrategy => ({ performance: unknown(note), accessibility: unknown(note), bestPractices: unknown(note), seo: unknown(note), lcp: unknown(note), cls: unknown(note), inpTbt: unknown(note) });
+const PAGESPEED_TIMEOUT_MS = 100_000;
 export async function psiMetrics(url: string, strategy: "mobile" | "desktop") {
   const apiKey = process.env.PAGESPEED_API_KEY;
   if (!apiKey) {
     console.warn("PageSpeed Insights is unavailable: PAGESPEED_API_KEY is not configured.");
-    return missingPsiStrategy("PageSpeed Insights is unavailable.");
+    return missingPsiStrategy("PageSpeed Insights is not configured for this scan.");
   }
   for (let attempt = 1; attempt <= 2; attempt++) try {
     if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 650));
     const endpoint = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
     endpoint.searchParams.set("url", url); endpoint.searchParams.set("strategy", strategy); endpoint.searchParams.set("key", apiKey);
     for (const category of ["PERFORMANCE", "ACCESSIBILITY", "BEST_PRACTICES", "SEO"]) endpoint.searchParams.append("category", category);
-    const response = await safeFetch(endpoint.toString(), { timeoutMs: 16_000, maxBytes: 1_500_000, maxRedirects: 0 });
+    const response = await safeFetch(endpoint.toString(), { timeoutMs: PAGESPEED_TIMEOUT_MS, maxBytes: 1_500_000, maxRedirects: 0 });
     if (response.status < 200 || response.status >= 300) {
       let apiMessage = "";
       try { apiMessage = String((JSON.parse(response.body.toString("utf8")) as { error?: { status?: string; message?: string } }).error?.message ?? ""); } catch { /* Keep status as the diagnostic when the provider response is not JSON. */ }
@@ -355,14 +364,19 @@ export async function psiMetrics(url: string, strategy: "mobile" | "desktop") {
   } catch (error) {
     const detail = error instanceof Error ? error.message.replace(/([?&]key=)[^&\s]+/gi, "$1[redacted]").replace(/([?&]url=)[^&\s]+/gi, "$1[redacted]").slice(0, 180) : "Unknown error";
     console.error("PageSpeed Insights API error", { strategy, attempt, error: detail });
-    if (attempt === 2) return missingPsiStrategy("PageSpeed Insights is unavailable.");
+    if (currentScanSignal()?.aborted) return missingPsiStrategy(`PageSpeed Insights was cancelled when the scan ended during the ${strategy} run.`);
+    const timedOut = error instanceof Error && /too long to respond|exceeded its time limit/i.test(error.message);
+    if (timedOut || attempt === 2) return missingPsiStrategy(timedOut
+      ? `PageSpeed Insights timed out during the ${strategy} run. Retry Lighthouse to try again.`
+      : `PageSpeed Insights could not complete the ${strategy} run.`);
   }
-  return missingPsiStrategy("PageSpeed Insights is unavailable.");
+  return missingPsiStrategy("PageSpeed Insights did not return a result.");
 }
 
 async function processScanCore(id: string, leaseToken?: string) {
   if (running.has(id)) return;
   running.add(id);
+  let lighthouseController: AbortController | undefined;
   let browserMs = 0; let modelInputTokens = 0; let modelOutputTokens = 0; let scanModel = "";
   try {
     const scan = await readScan(id); if (!scan || scan.status === "complete") return;
@@ -386,15 +400,21 @@ async function processScanCore(id: string, leaseToken?: string) {
     await assertRobotsAllows(finalUrl);
     const finalRobotsPolicy = await robotsFor(finalUrl);
     const aiCrawlerReport = buildAiCrawlerReport({ robotsText: finalRobotsPolicy.text, robotsUrl: new URL("/robots.txt", finalUrl.origin).toString(), pagePath: `${finalUrl.pathname}${finalUrl.search}`, fetchedAt: new Date().toISOString() });
+    lighthouseController = new AbortController();
+    const scanSignalForPageSpeed = currentScanSignal();
+    const lighthouseSignal = scanSignalForPageSpeed
+      ? AbortSignal.any([scanSignalForPageSpeed, lighthouseController.signal])
+      : lighthouseController.signal;
+    const lighthousePromise = keepPromiseObserved(withScanSignal(lighthouseSignal, () => Promise.all([psiMetrics(finalUrl.toString(), "mobile"), psiMetrics(finalUrl.toString(), "desktop")])));
     let html = initial.body.toString("utf8");
     const signal = currentScanSignal();
     const launching = chromium.launch(await browserLaunchOptions());
     if (signal) void launching.then((lateBrowser) => { if (signal.aborted) return lateBrowser.close(); }).catch(() => undefined);
     const browser = await (signal ? Promise.race([
       launching,
-      new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new SafeFetchError("The scan exceeded its 90-second time limit.")), { once: true })),
+      new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new SafeFetchError(scanTimeLimitMessage())), { once: true })),
     ]) : launching);
-    if (signal?.aborted) { await browser.close(); throw new SafeFetchError("The scan exceeded its 90-second time limit."); }
+    if (signal?.aborted) { await browser.close(); throw new SafeFetchError(scanTimeLimitMessage()); }
     const closeBrowser = () => { void browser.close().catch(() => undefined); };
     signal?.addEventListener("abort", closeBrowser, { once: true });
     const counter = { count: 0, bytes: 0, active: 0, waiting: [] as Array<() => void>, buckets: { script: 0, style: 0, image: 0, font: 0, other: 0 }, largest: [] as Array<{ url: string; bytes: number; type: string }> };
@@ -413,7 +433,7 @@ async function processScanCore(id: string, leaseToken?: string) {
       await mobileContext.routeWebSocket("**/*", (socket) => socket.close({ code: 1008, reason: "WebSockets are disabled during scanning." }));
       mobile = await pageCapture(mobileContext, finalUrl.toString(), true, counter, requestBudget); await mobileContext.close();
     } finally { signal?.removeEventListener("abort", closeBrowser); browserMs += Date.now() - browserStartedAt; await browser.close(); }
-    if (signal?.aborted) throw new SafeFetchError("The scan exceeded its 90-second time limit. Please try again later.");
+    if (signal?.aborted) throw new SafeFetchError(scanTimeLimitMessage(true));
     const snap = desktop.snapshot; const mobileSnap = mobile.snapshot;
     const pageUrl = new URL(finalUrl); const origin = pageUrl.origin;
     await phase(id, "Checking links and page signals…", leaseToken);
@@ -465,7 +485,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     if (snap.ogImage) {
       try { const imageUrl = new URL(snap.ogImage, finalUrl).toString(); await assertRobotsAllows(new URL(imageUrl)); const image = await safeFetch(imageUrl, { timeoutMs: 5000, maxBytes: 1_500_000, maxRedirects: 3, beforeRedirect: assertRobotsAllows }); const mime = String(image.headers["content-type"] ?? ""); const dimensions = mime.startsWith("image/") ? imageSize(image.body) : undefined; if (dimensions) ogImageTooSmall = dimensions.width < 1200 || dimensions.height < 630; ogImage = image.status >= 200 && image.status < 300 && dimensions ? { state: "checked", value: `${dimensions.width} × ${dimensions.height}px · ${image.body.length} bytes` } : { state: "checked", value: `Invalid image response · HTTP ${image.status}` }; if (dimensions && image.status >= 200 && image.status < 300) { const safeImage = new URL(image.finalUrl); safeImage.search = ""; safeImage.hash = ""; shareImageUrl = safeImage.toString(); } } catch { ogImage = { state: "checked", value: "Image could not be fetched or decoded safely" }; }
     }
-    const [psi, psiDesktop] = await Promise.all([psiMetrics(finalUrl.toString(), "mobile"), psiMetrics(finalUrl.toString(), "desktop")]);
+
     const scripts: ScriptSource[] = [{ url: finalUrl.toString(), source: snap.html }];
     for (const scriptUrl of snap.scriptUrls.filter((url: string) => { try { const candidate = new URL(url); return candidate.origin === origin && /\.m?js$/i.test(candidate.pathname); } catch { return false; } }).slice(0, 4)) {
       try {
@@ -527,9 +547,7 @@ async function processScanCore(id: string, leaseToken?: string) {
       proofSignals: { state: "checked", value: snap.hasProof ? "Detected" : "Not detected by text and image-label checks" }, pricing: { state: "checked", value: snap.hasPricing ? "Detected" : "Not detected in page text" }, faq: { state: "checked", value: snap.hasFaq ? "Detected" : "Not detected" }, contact: { state: "checked", value: snap.hasContact ? "Detected" : "Not detected" },
       mobileOverflow: { state: "checked", value: mobileSnap.bodyWidth > mobileSnap.viewportWidth + 2 ? `${mobileSnap.bodyWidth}px wide` : "None detected" },
       designFontFamilies: { state: "checked", value: designSignals.fontFamilies.length }, designDistinctColors: { state: "checked", value: designSignals.colors.length }, designContrastFailures: { state: "checked", value: designSignals.contrastFailureCount },
-      pageSpeedMobile: psi.performance, pageSpeedDesktop: psiDesktop.performance, lighthouseMobileAccessibility: psi.accessibility, lighthouseDesktopAccessibility: psiDesktop.accessibility,
-      lighthouseMobileBestPractices: psi.bestPractices, lighthouseDesktopBestPractices: psiDesktop.bestPractices, lighthouseMobileSeo: psi.seo, lighthouseDesktopSeo: psiDesktop.seo,
-      lcpMobile: psi.lcp, clsMobile: psi.cls, inpTbtMobile: psi.inpTbt, lcpDesktop: psiDesktop.lcp, clsDesktop: psiDesktop.cls, inpTbtDesktop: psiDesktop.inpTbt,
+
       titleLength: { state: "checked", value: snap.title.length }, descriptionLength: { state: "checked", value: snap.description.length }, h1Count: { state: "checked", value: snap.h1Count },
       headingOrder: { state: "checked", value: snap.headingOrderProblems.length ? `${snap.headingOrderProblems.length} skip(s)` : "In order" }, metaRobots: snap.metaRobots ? { state: "checked", value: snap.metaRobots.slice(0, 120) } : { state: "checked", value: "No robots meta" },
       twitterCard: snap.twitterCard ? { state: "checked", value: snap.twitterCard } : { state: "checked", value: "Missing" }, hreflang: { state: "checked", value: snap.hreflang.length }, jsonLd: { state: "checked", value: `${snap.jsonLd.valid} valid · ${snap.jsonLd.invalid} invalid` },
@@ -573,6 +591,15 @@ async function processScanCore(id: string, leaseToken?: string) {
     const sectionCodes: Record<string, string> = { security: "SEC", seo: "SEO", leftovers: "LEFT", forms: "FORM", technical: "TECH", design: "DES", other: "GEN" };
     const codeCounters: Record<string, number> = {};
     for (const finding of ranked) { const prefix = sectionCodes[finding.section ?? "other"] ?? "GEN"; codeCounters[prefix] = (codeCounters[prefix] ?? 0) + 1; finding.code = `${prefix}-${String(codeCounters[prefix]).padStart(2, "0")}`; }
+    const [psi, psiDesktop] = await lighthousePromise;
+    Object.assign(checkResults, {
+      pageSpeedMobile: psi.performance, pageSpeedDesktop: psiDesktop.performance,
+      lighthouseMobileAccessibility: psi.accessibility, lighthouseDesktopAccessibility: psiDesktop.accessibility,
+      lighthouseMobileBestPractices: psi.bestPractices, lighthouseDesktopBestPractices: psiDesktop.bestPractices,
+      lighthouseMobileSeo: psi.seo, lighthouseDesktopSeo: psiDesktop.seo,
+      lcpMobile: psi.lcp, clsMobile: psi.cls, inpTbtMobile: psi.inpTbt,
+      lcpDesktop: psiDesktop.lcp, clsDesktop: psiDesktop.cls, inpTbtDesktop: psiDesktop.inpTbt,
+    });
     const scored = scoreLighthouseAudit({ findings: ranked, checks: checkResults, mobile: psi, desktop: psiDesktop, designReview });
     const hints = stackHints(html);
     const prompts = promptVariants({ url: finalUrl.toString(), title: snap.title, stack: hints, findings: ranked, copyDrafts });
@@ -594,7 +621,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     await updateScan(id, (scan) => ({ ...scan, status: "failed", phase: "Scan could not be completed", error: message, updatedAt: now() }), leaseToken);
     const failedScan = await readScan(id);
     await settleScanCost({ scanId: id, paid: Boolean(failedScan?.paid), browserMs, inputTokens: modelInputTokens, outputTokens: modelOutputTokens, model: scanModel || (failedScan?.paid ? process.env.LLM_MODEL_PAID : process.env.LLM_MODEL_FREE) || "gpt-4.1-mini" }).catch(() => undefined);
-  } finally { running.delete(id); }
+  } finally { lighthouseController?.abort(); running.delete(id); }
 }
 
 export class ScanAdmissionError extends Error {

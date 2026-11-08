@@ -37,6 +37,8 @@ describe("actual scan-store lease SQL on PostgreSQL", () => {
     expect(await readScan(id)).toMatchObject({ status: "scanning", leaseToken: claimed[0]?.leaseToken });
     const lease = (await db.query<{ valid: boolean }>("SELECT lease_expires_at>now() AS valid FROM scans WHERE id=$1", [id])).rows[0];
     expect(lease.valid).toBe(true);
+    const ampleLease = (await db.query<{ valid: boolean }>("SELECT lease_expires_at>now()+interval '150 seconds' AS valid FROM scans WHERE id=$1", [id])).rows[0];
+    expect(ampleLease.valid).toBe(true);
   });
 
   it("reclaims an expired lease and rejects the old worker's phase and completion saves", async () => {
