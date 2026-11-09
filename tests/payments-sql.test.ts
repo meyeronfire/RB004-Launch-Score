@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import type Stripe from "stripe";
 import type postgres from "postgres";
 
-const mocks = vi.hoisted(() => ({ sql: undefined as unknown, create: vi.fn() }));
+const mocks = vi.hoisted(() => ({ sql: undefined as unknown, create: vi.fn(), retrievePrice: vi.fn() }));
 vi.mock("../lib/store", () => ({
   database: () => mocks.sql,
   readScan: async (id: string) => {
@@ -13,7 +13,7 @@ vi.mock("../lib/store", () => ({
     return rows[0] ? { ...rows[0].payload, paid: rows[0].is_paid } : undefined;
   },
 }));
-vi.mock("stripe", () => ({ default: class { checkout = { sessions: { create: mocks.create } }; } }));
+vi.mock("stripe", () => ({ default: class { prices = { retrieve: mocks.retrievePrice }; checkout = { sessions: { create: mocks.create } }; } }));
 import { activatePurchase, activateRefund, decryptClaimToken, deliverClaimEmail, getPaidReport, makeCheckout, requestClaimEmail, verifyClaimToken, verifyPaidRescanToken } from "../lib/payments";
 import { enqueuePaidPrompt } from "../lib/paid-prompt";
 
@@ -24,8 +24,8 @@ type Queryable = { query: (query: string, params?: unknown[]) => Promise<{ rows:
 function tag(client: Queryable) {
   return async (parts: TemplateStringsArray, ...values: unknown[]) => client.query(parts.reduce((query, part, index) => query + (index ? `$${index}` : "") + part, ""), values).then((result) => result.rows);
 }
-function paid(id: string, attemptId?: string) {
-  return { id, metadata: { scanId, releaseCode: "RB004", oneTime: "true", ...(attemptId ? { checkoutAttemptId: attemptId } : {}) }, client_reference_id: scanId, mode: "payment", payment_method_types: ["card"], currency: "usd", amount_total: 1200, payment_status: "paid", customer_details: { email: "buyer@example.test" }, payment_intent: `pi_${id}` } as unknown as Stripe.Checkout.Session;
+function paid(id: string, attemptId?: string, targetScanId = scanId) {
+  return { id, metadata: { scanId: targetScanId, priceId: "price_test_launch_plan", releaseCode: "RB004", oneTime: "true", ...(attemptId ? { checkoutAttemptId: attemptId } : {}) }, client_reference_id: targetScanId, mode: "payment", payment_method_types: ["card"], currency: "usd", amount_total: 1200, payment_status: "paid", customer_details: { email: "buyer@example.test" }, payment_intent: `pi_${id}` } as unknown as Stripe.Checkout.Session;
 }
 const event = (id: string) => ({ id }) as Stripe.Event;
 async function issued(id: string) {
@@ -52,10 +52,12 @@ beforeEach(async () => {
   await db.query("INSERT INTO scans(id,url,status,phase,payload) VALUES($1,'https://example.test/','complete','Ready',$2::jsonb)", [scanId, JSON.stringify({ id: scanId, status: "complete", domain: "example.test", score: 88, paidPayload: { available: true, paidModelReady: true, model: "gpt-4.1", prompts: { Cursor: "private fix" } } })]);
   vi.stubEnv("REPORT_TOKEN_ENCRYPTION_KEY", key.toString("base64"));
   vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
+  vi.stubEnv("STRIPE_PRICE_ID", "price_test_launch_plan");
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test_fake");
   vi.stubEnv("RESEND_API_KEY", "re_test_fake");
   vi.stubEnv("RESEND_FROM_EMAIL", "reports@example.test");
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
+  mocks.retrievePrice.mockReset().mockResolvedValue({ active: true, type: "one_time", currency: "usd", unit_amount: 1200 });
   mocks.create.mockReset().mockImplementation(async (params: Stripe.Checkout.SessionCreateParams) => ({ ...paid(`cs_${mocks.create.mock.calls.length}`, params.metadata?.checkoutAttemptId as string), url: "https://checkout.stripe.test/local" }));
 });
 afterAll(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); await db.close(); });

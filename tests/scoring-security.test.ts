@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fixtures from "./fixtures/page-snapshots.json";
 import { deterministicFindings, summarizeLinkStatuses, isRobotsDisallowed } from "../lib/scanner";
 import { CATEGORY_WEIGHTS, scoreFindings } from "../lib/score";
@@ -105,7 +105,8 @@ describe("free and paid report boundaries", () => {
     expect(JSON.stringify(publicScan({ ...report, paid: true }))).not.toContain("private fix");
   });
   it("accepts only the fixed paid Checkout session details", () => {
-    const valid = { metadata: { scanId: report.id, releaseCode: "RB004", oneTime: "true" }, client_reference_id: report.id, mode: "payment", payment_method_types: ["card"], currency: "usd", amount_total: 1200, payment_status: "paid" } as unknown as StripeTypes.Checkout.Session;
+    vi.stubEnv("STRIPE_PRICE_ID", "price_test_launch_plan");
+    const valid = { metadata: { scanId: report.id, priceId: "price_test_launch_plan", releaseCode: "RB004", oneTime: "true" }, client_reference_id: report.id, mode: "payment", payment_method_types: ["card"], currency: "usd", amount_total: 1200, payment_status: "paid" } as unknown as StripeTypes.Checkout.Session;
     expect(validatePaidSession(valid, report.id)).toBe(true);
     expect(validatePaidSession({ ...valid, amount_total: 1199 }, report.id)).toBe(false);
     expect(validatePaidSession({ ...valid, currency: "eur" }, report.id)).toBe(false);
@@ -114,6 +115,7 @@ describe("free and paid report boundaries", () => {
     expect(validatePaidSession({ ...valid, metadata: { scanId: report.id, releaseCode: "RB004", oneTime: "false" } }, report.id)).toBe(false);
     expect(validatePaidSession({ ...valid, payment_method_types: ["card", "link"] }, report.id)).toBe(false);
     expect(validatePaidSession({ ...valid, client_reference_id: "other" }, report.id)).toBe(false);
+    expect(validatePaidSession({ ...valid, metadata: { ...valid.metadata, priceId: "price_other" } }, report.id)).toBe(false);
   });
   it("verifies Stripe webhook signatures and rejects a modified payload", () => {
     const stripe = new Stripe("sk_test_local_signature_only"); const secret = "whsec_test_local_signature_only";

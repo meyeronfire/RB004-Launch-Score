@@ -115,7 +115,7 @@ export function publicScan(scan: ScanRecord) {
     return [section, { total: items.length, critical: items.filter((item) => item.severity === "critical").length, high: items.filter((item) => item.severity === "high").length, medium: items.filter((item) => item.severity === "medium").length, low: items.filter((item) => item.severity === "low").length }];
   }));
   const encryptionKey = Buffer.from(process.env.REPORT_TOKEN_ENCRYPTION_KEY ?? "", "base64");
-  const checkoutConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.DATABASE_URL && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && encryptionKey.length === 32 && (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SITE_URL));
+  const checkoutConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID && process.env.STRIPE_WEBHOOK_SECRET && process.env.DATABASE_URL && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && encryptionKey.length === 32 && (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SITE_URL));
   if (!checkoutConfigured && !stripeWarningLogged) { console.warn("Paid unlock is hidden because checkout dependencies are not fully configured."); stripeWarningLogged = true; }
   const allFindings = scan.findings ?? [];
   const publicFindings = allFindings.slice(0, 3);

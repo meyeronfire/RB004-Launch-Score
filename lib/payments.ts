@@ -32,7 +32,8 @@ export function readAccessCookie(cookieHeader: string | null, scanId: string) {
   try { return decodeURIComponent(pair.slice(name.length + 1)); } catch { return undefined; }
 }
 export function validatePaidSession(session: Stripe.Checkout.Session, scanId: string) {
-  return Boolean(scanId && session.metadata?.scanId === scanId && session.client_reference_id === scanId && session.metadata?.releaseCode === RELEASE_CODE && session.metadata?.oneTime === "true" && session.mode === "payment" && session.payment_method_types?.length === 1 && session.payment_method_types[0] === "card" && session.currency === "usd" && session.amount_total === PRICE_FIX_PROMPT_USD * 100 && session.payment_status === "paid");
+  const priceId = process.env.STRIPE_PRICE_ID?.trim();
+  return Boolean(priceId && scanId && session.metadata?.scanId === scanId && session.metadata?.priceId === priceId && session.client_reference_id === scanId && session.metadata?.releaseCode === RELEASE_CODE && session.metadata?.oneTime === "true" && session.mode === "payment" && session.payment_method_types?.length === 1 && session.payment_method_types[0] === "card" && session.currency === "usd" && session.amount_total === PRICE_FIX_PROMPT_USD * 100 && session.payment_status === "paid");
 }
 export function verifyStripeEvent(stripe: Stripe, raw: string, signature: string, secret: string) {
   return stripe.webhooks.constructEvent(raw, signature, secret);
@@ -44,12 +45,18 @@ export async function makeCheckout(scanId: string) {
   if (!scan.paidPayload?.available) throw new Error("A complete Launch Plan is not available for this scan yet.");
   const sql = database(); if (!sql) throw new Error("The purchase database is not configured.");
   const stripe = stripeClient(); if (!stripe) throw new Error("Stripe checkout is not configured.");
+  const priceId = process.env.STRIPE_PRICE_ID?.trim();
+  if (!priceId) throw new Error("Stripe product price is not configured. Add STRIPE_PRICE_ID before offering checkout.");
   if (!process.env.STRIPE_WEBHOOK_SECRET) throw new Error("Stripe webhook is not configured. Add STRIPE_WEBHOOK_SECRET before offering checkout.");
   if (!process.env.RESEND_API_KEY) throw new Error("Paid report email delivery is not configured. Add RESEND_API_KEY before offering checkout.");
   if (!process.env.RESEND_FROM_EMAIL) throw new Error("Paid report email delivery is not configured. Add RESEND_FROM_EMAIL before offering checkout.");
   tokenEncryptionKey();
   if (process.env.NODE_ENV === "production" && !process.env.NEXT_PUBLIC_SITE_URL) throw new Error("Set NEXT_PUBLIC_SITE_URL to your verified public app URL.");
   const site = SITE_URL.replace(/\/$/, "");
+  const price = await stripe.prices.retrieve(priceId);
+  if (!price.active || price.type !== "one_time" || price.currency !== "usd" || price.unit_amount !== PRICE_FIX_PROMPT_USD * 100) {
+    throw new Error(`Stripe price must be active, one-time, and exactly ${PRICE_FIX_PROMPT_USD} USD.`);
+  }
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
   const attemptId = `pending-${randomBytes(16).toString("hex")}`;
   // Commit an issuance attempt before Stripe: a lost API response can still be reconciled by webhook metadata.
@@ -63,8 +70,8 @@ export async function makeCheckout(scanId: string) {
   });
   const session = await stripe.checkout.sessions.create({
       mode: "payment", payment_method_types: ["card"], client_reference_id: scanId, customer_creation: "always", expires_at: expiresAt,
-      line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: PRICE_FIX_PROMPT_USD * 100, product_data: { name: `${PRODUCT_NAME} Launch Plan — ${RELEASE_CODE}`, description: `Personalized launch plan, full report, owner checklist, and coding-agent prompts for ${scan.domain ?? "this page"}` } } }],
-      metadata: { scanId, releaseCode: RELEASE_CODE, oneTime: "true", checkoutAttemptId: attemptId },
+      line_items: [{ quantity: 1, price: priceId }],
+      metadata: { scanId, priceId, releaseCode: RELEASE_CODE, oneTime: "true", checkoutAttemptId: attemptId },
       success_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=complete`, cancel_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=cancelled`,
   }, { idempotencyKey: attemptId });
   await sql.begin(async (tx) => {
