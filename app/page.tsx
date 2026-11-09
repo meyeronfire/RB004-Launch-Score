@@ -56,7 +56,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
       <p className="report-depth-note mono">CHECKS VARY BY PAGE · UNKNOWN RESULTS STAY UNKNOWN · NO FULL-SITE CRAWL CLAIM</p>
     </section>
     <section className="wrap editorial launch-journey" aria-labelledby="journey-title">
-      <div className="section-head"><h2 id="journey-title">From scan to launch.</h2><p>Use VERDKT to find what matters, make a practical plan, then hand your coding agent a prompt built around the evidence.</p></div>
+      <div className="section-head"><h2 id="journey-title">From scan to launch.</h2><p>Use Ready for Real to find what matters, make a practical plan, then hand your coding agent a prompt built around the evidence.</p></div>
       <div className="launch-journey-grid">
         <article><span className="mono">SCAN</span><h3>See what the page shows today.</h3><p>Start with a free report and every finding the scan recorded.</p></article>
         <article><span className="mono">PLAN</span><h3>Choose what to do next.</h3><p>Get the findings prioritized, plus owner checks the public scan cannot verify.</p></article>
