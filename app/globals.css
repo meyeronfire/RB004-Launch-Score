@@ -1139,7 +1139,7 @@ button, input { font: inherit; }
 .landing-page { --bg:#090909; --surface:#111; --ink:#f5f5f5; --ink-soft:#c2c2c2; --ink-faint:#999; --line:#303030; --accent:#ff2e7e; --accent-strong:#e91d6c; background:radial-gradient(ellipse at 76% 2%,rgba(255,46,126,.075),transparent 26%),#090909; color:var(--ink); }
 .landing-page .wrap { width:min(100% - 48px,1180px); }
 .landing-stage { position:relative; isolation:isolate; overflow:clip; }
-.landing-stage > .chrome-ribbon--stage { top:-72px; right:0; width:min(100%,1680px); height:min(760px,44vw); object-fit:cover; object-position:center top; opacity:.76; -webkit-mask-image:radial-gradient(125% 112% at 100% 0%,#000 27%,transparent 78%); mask-image:radial-gradient(125% 112% at 100% 0%,#000 27%,transparent 78%); }
+.landing-stage > .chrome-ribbon--stage { top:64px; right:0; width:min(100%,1680px); height:min(760px,44vw); object-fit:cover; object-position:center top; opacity:.76; -webkit-mask-image:radial-gradient(125% 112% at 100% 0%,#000 27%,transparent 78%); mask-image:radial-gradient(125% 112% at 100% 0%,#000 27%,transparent 78%); }
 .landing-stage > .masthead, .landing-stage > .hero { position:relative; z-index:1; }
 .landing-page .masthead { min-height:70px; border-bottom:0; }
 .landing-page .brand-name { font-size:20px; letter-spacing:-.035em; }
@@ -1231,5 +1231,5 @@ button, input { font: inherit; }
 }
 
 @media (max-width:760px) {
-  .landing-stage > .chrome-ribbon--stage { top:-54px; right:-18%; width:130%; max-width:none; height:450px; opacity:.58; -webkit-mask-image:radial-gradient(125% 110% at 100% 0%,#000 24%,transparent 78%); mask-image:radial-gradient(125% 110% at 100% 0%,#000 24%,transparent 78%); }
+  .landing-stage > .chrome-ribbon--stage { top:54px; right:-18%; width:130%; max-width:none; height:450px; opacity:.58; -webkit-mask-image:radial-gradient(125% 110% at 100% 0%,#000 24%,transparent 78%); mask-image:radial-gradient(125% 110% at 100% 0%,#000 24%,transparent 78%); }
 }
