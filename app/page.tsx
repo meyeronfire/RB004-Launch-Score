@@ -36,7 +36,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     <div className="landing-stage">
       <ChromeRibbon className="chrome-ribbon--stage" />
       <header className="wrap masthead">
-        <Link className="brand" href="https://regularbasis.studio"><Image className="brand-icon" src="/r4r-logo.png" alt="" width={40} height={40} priority /><span className="brand-name">Ready for Real<span className="brand-dot">.</span></span><span className="brand-sub">Launch Readiness</span></Link>
+        <Link className="brand" href="https://regularbasis.studio"><Image className="brand-icon" src="/r4r-logo.jpg" alt="" width={40} height={40} priority /><span className="brand-name">Ready for Real<span className="brand-dot">.</span></span><span className="brand-sub">Launch Readiness</span></Link>
         <span className="mast-meta">A REGULAR BASIS RELEASE · BERLIN</span>
       </header>
       <section className="wrap hero" aria-labelledby="hero-title">
