@@ -22,10 +22,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const [interDisplay, geistMono, logo] = await Promise.all([
     readFile(path.join(process.cwd(), "public/fonts/inter-display-medium.ttf")),
     readFile(path.join(process.cwd(), "public/fonts/geist-mono.ttf")),
-    readFile(path.join(process.cwd(), "public/r4r-logo.png")),
+    readFile(path.join(process.cwd(), "public/r4r-logo.jpg")),
   ]);
   const data = buildShareCardData(publicScan(scan));
-  const logoSrc = `data:image/png;base64,${logo.toString("base64")}`;
+  const logoSrc = `data:image/jpeg;base64,${logo.toString("base64")}`;
   const { width, height } = SHARE_FORMATS[format];
   return new ImageResponse(renderShareCard({ data, variant, width, height, logoSrc }), {
     width, height,
