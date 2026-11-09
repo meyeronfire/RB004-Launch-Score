@@ -4,6 +4,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { PRODUCT_NAME, SITE_URL } from "@/config/release";
 import { PlausibleScript } from "@/components/plausible";
+import { ClarityScript } from "@/components/clarity";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -26,5 +27,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}<PlausibleScript /></body></html>;
+  return <html lang="en"><body>{children}<PlausibleScript /><ClarityScript /></body></html>;
 }
