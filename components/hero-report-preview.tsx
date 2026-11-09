@@ -36,7 +36,7 @@ export function HeroReportPreview() {
   }, []);
 
   return <aside className="hero-preview" aria-label="Example launch report preview">
-    <span className="preview-label mono">EXAMPLE</span>
+    <span className="preview-label mono">EXAMPLE SCORE</span>
     <div className="preview-score" aria-label={`Example score ${exampleReport.score} out of 100`}>{value}<span>/100</span></div>
     <div className="preview-categories">
       {categories.map(({ key, name }, index) => {
