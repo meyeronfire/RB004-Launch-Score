@@ -16,6 +16,7 @@ import { getCheckLedger, getCategoryCheckStats, type CheckStatus } from "@/lib/r
 import { findingResult } from "@/lib/finding-result";
 import { ScrollReveal } from "@/components/scroll-reveal";
 import { promptVariants } from "@/lib/fix-prompts";
+import { exampleReport } from "@/lib/example";
 import { ReportArtifactActions } from "@/components/report-artifact-actions";
 import { ReportFinding } from "@/components/report-finding";
 import { ReportOtherChecks } from "@/components/report-other-checks";
@@ -28,18 +29,29 @@ const toolId = (name: string) => `prompt-tab-${name.toLowerCase().replace(/[^a-z
 const scoreDisplay = (score?: number) => typeof score === "number" ? String(score).padStart(2, "0") : "—";
 const formatUtc = (value?: string, options?: Intl.DateTimeFormatOptions) => value ? `${new Date(value).toLocaleString("en-GB", { ...options, timeZone: "UTC" })} UTC` : "Time unavailable";
 const scanSteps = ["Checking scan permissions…", "Rendering the desktop page…", "Rendering the mobile page…", "Checking links and page signals…", "Preparing the evidence-led report…", "Reviewing visual design…"];
+function examplePaidData() {
+  const findings = exampleReport.findings ?? [];
+  const copyDrafts = { status: "Page-copy drafts were not generated for this historical sample scan.", headlines: [] as string[], subheadline: "", cta: "", faq: "", metaTitle: "", metaDescription: "" };
+  return {
+    available: true,
+    findings,
+    prompts: promptVariants({ url: exampleReport.finalUrl ?? exampleReport.url, title: exampleReport.title ?? "", stack: exampleReport.stackHints ?? [], findings, copyDrafts, scannedAt: exampleReport.createdAt, scoringVersion: exampleReport.scoringVersion }),
+    copyDrafts,
+  };
+}
 
 export function ReportClient({ initial }: { initial: FreeReport }) {
+  const params = useParams<{ id: string }>(); const searchParams = useSearchParams();
+  const id = params.id;
+  const paidPreview = id === "example" && searchParams.get("paidPreview") === "1";
   const [scan, setScan] = useState(initial as FreeReport & { findings?: Finding[]; lockedTitles?: string[]; lockedCount?: number });
-  const [paidData, setPaidData] = useState<{ available: boolean; findings: Finding[]; prompts: Record<string, string>; copyDrafts: { status: string; headlines: string[]; subheadline: string; cta: string; faq: string; metaTitle: string; metaDescription: string } } | undefined>();
+  const [paidData, setPaidData] = useState<{ available: boolean; findings: Finding[]; prompts: Record<string, string>; copyDrafts: { status: string; headlines: string[]; subheadline: string; cta: string; faq: string; metaTitle: string; metaDescription: string } } | undefined>(() => paidPreview ? examplePaidData() : undefined);
   const [paidStatus, setPaidStatus] = useState("");
   const [tool, setTool] = useState("Cursor"); const [copyStatus, setCopyStatus] = useState(""); const [shareStatus, setShareStatus] = useState(""); const [emailStatus, setEmailStatus] = useState("");
   const [checkoutPending, setCheckoutPending] = useState(false); const [checkoutMessage, setCheckoutMessage] = useState(""); const [checkoutSection, setCheckoutSection] = useState("");
   const [accessStatus, setAccessStatus] = useState("");
   const [notifyStatus, setNotifyStatus] = useState("");
   const [animatedScore, setAnimatedScore] = useState<number | null>(null);
-  const params = useParams<{ id: string }>(); const searchParams = useSearchParams();
-  const id = params.id;
   const checkoutAvailable = Boolean(scan.checkoutAvailable && !scan.paidRescanAvailable);
   useEffect(() => {
     if (scan.id === "example" || ["queued", "scanning"].includes(scan.status)) return;
@@ -196,6 +208,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   return <main className="report-page">
     <ScrollReveal selectors=".depth-section, .categories-section, .findings-section, .capture-section, .category-row, .check-evidence > div, .finding-glass-shell, .speed-insights > div" />
     <header className="wrap masthead"><Link className="brand" href="/"><img className="brand-logo" src="/verdkt-wordmark.png" alt="VERDKT" width={96} height={32} /><span className="brand-sub">Launch Score</span></Link><span className="mast-meta">{scan.domain ?? "PAGE REVIEW"}</span></header>
+    {paidPreview && <p className="wrap coverage-note"><strong>NO-CHARGE PAID-PAGE PREVIEW · HISTORICAL REGULARBASIS.STUDIO SCAN</strong><br/>Demo based on a scan from 31 October 2026. No real purchase or report access is changed.</p>}
     {!completed && scan.status !== "failed" && <section className="wrap scan-progress" aria-live="polite"><div className="scan-progress-ring" role="img" aria-label={`Scan step ${currentStep < 0 ? 0 : currentStep + 1} of ${scanSteps.length}`}><svg viewBox="0 0 72 72" aria-hidden="true"><circle className="progress-ring-track" cx="36" cy="36" r="31"/><circle className="progress-ring-value" cx="36" cy="36" r="31" strokeDasharray="195 195" strokeDashoffset={195 * (1 - (currentStep + 1) / scanSteps.length)}/></svg><span className="mono">{currentStep < 0 ? 0 : currentStep + 1}<small>/{scanSteps.length}</small></span></div><h1>{scan.phase}</h1><p>Rendering the live page and checking the details we can verify.</p><ol className="progress-log">{scanSteps.map((phase, index) => <li className={`${index < currentStep ? "done" : ""} ${index === currentStep ? "active" : ""} mono`} key={phase}>{index === currentStep && <span className="live-dot" aria-hidden="true"/>}{phase}</li>)}</ol></section>}
     {scan.status === "failed" && <section className="wrap scan-progress scan-failed"><span className="mono progress-label">SCAN STOPPED</span><h1>This page could not be reviewed.</h1><p>{scan.error ?? "The page could not be reached. Check the URL and try again."}</p><ScanForm initialUrl={scan.url} submitLabel="Retry scan" /><Link className="text-link" href="/">Try a different page →</Link></section>}
     {completed && <>
@@ -260,6 +273,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         const selected = tabs[next];
         if (selected?.dataset.tool) { setTool(selected.dataset.tool); selected.focus(); }
       }}>{Object.keys(paidData.prompts).map((name) => <button type="button" role="tab" id={toolId(name)} data-tool={name} aria-controls="prompt-content" tabIndex={tool === name ? 0 : -1} aria-selected={tool === name} className={tool === name ? "active" : ""} onClick={() => setTool(name)} key={name}>{name}</button>)}</div><pre className="prompt-output" id="prompt-content" role="tabpanel" aria-labelledby={toolId(tool)} tabIndex={0}>{prompt}</pre><div className="prompt-actions"><button className="primary-action" onClick={copyPrompt}>Copy {tool} prompt</button><button className="secondary-action" onClick={downloadPrompt}>Download prompt</button></div><span role="status">{copyStatus}</span></section>}
+      {paidPreview && paidData && <section className="wrap report-copy"><span className="mono">EXAMPLE PURCHASE EMAIL · PLAIN TEXT</span><p><strong>Subject:</strong> Ready for Real: your verified report</p><p>Your one-time Ready for Real report is ready. Open the secure purchaser link: [personal secure link]</p><p>Your purchase includes two additional re-scans of this exact URL within seven days. Each re-scan checks the current page again.</p><p>This link grants access to the paid report. Do not forward it.</p></section>}
       <ReportArtifactActions report={scan} paidData={paidData} />
       <div className="wrap share-row"><span className="mono">SHARE YOUR SCORE</span><button type="button" onClick={() => openShare("x")}>X</button><button type="button" onClick={() => openShare("linkedin")}>LinkedIn</button><button type="button" onClick={copyLink}>Copy link</button><span role="status">{shareStatus}</span></div>
       {paidStatus && <section className="wrap paid-report"><p className="mono inline-status" role="status">{paidStatus}</p></section>}
