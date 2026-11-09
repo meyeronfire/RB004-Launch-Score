@@ -147,7 +147,7 @@ export function createReportArtifacts(report: PublicAuditReport, paid?: PaidAudi
     return `- ${markdownText(page.path)} · ${page.state === "checked" ? `HTTP ${page.status ?? "unknown"}` : "unknown"} · ${markdownText(signals)}`;
   }).join("\n") : "No linked-page sample was recorded.";
   const markdown = [
-    `# ${markdownText(report.title || report.domain || "Launch Score audit")}`,
+    `# ${markdownText(report.title || report.domain || "Ready for Real report")}`,
     `- Score: **${score}**`, `- URL: ${markdownText(report.url)}`, `- Status: ${markdownText(report.status)}`, `- Scoring version: ${report.scoringVersion ?? "unknown"}`,
     report.createdAt ? `- Scanned: ${markdownText(report.createdAt)}` : "",
     report.auditCounts ? `- Audited checks: ${report.auditCounts.checksRun} · ${report.auditCounts.passed} passed · ${report.auditCounts.issues} issues` : "",
@@ -163,7 +163,7 @@ export function createReportArtifacts(report: PublicAuditReport, paid?: PaidAudi
     "## Full coding-agent prompts", promptBlock,
   ].filter(Boolean).join("\n\n");
   const quickSummary = [
-    `${report.title || report.domain || "Launch Score audit"} — ${score}`,
+    `${report.title || report.domain || "Ready for Real report"} — ${score}`,
     `${report.auditCounts?.checksRun ?? checks.length} checks · ${report.auditCounts?.passed ?? checkCounts.pass} passed · ${report.auditCounts?.issues ?? checkCounts.issue} issues`,
     ...findings.slice(0, 3).map((finding) => `- ${finding.severity.toUpperCase()}: ${finding.title}`),
   ].join("\n");
