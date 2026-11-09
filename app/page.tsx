@@ -32,20 +32,22 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const exampleUpdated = exampleReport.scoringVersion === 3 && Object.keys(exampleReport.categoryScores ?? {}).length === 7;
   return <main className="landing-page">
     <ScrollReveal selectors=".editorial, .check-list li, .price-item, .faq-item, .example-block-link" />
-    <header className="wrap masthead">
-      <Link className="brand" href="https://regularbasis.studio"><span className="brand-name">Ready for Real<span className="brand-dot">.</span></span><span className="brand-sub">Launch Readiness</span></Link>
-      <span className="mast-meta">A REGULAR BASIS RELEASE · BERLIN</span>
-    </header>
-    <section className="wrap hero" aria-labelledby="hero-title">
-      <ChromeRibbon />
-      <div className="hero-content">
-        <h1 id="hero-title">Will Your Launch Page Convert a <em>Stranger?</em></h1>
-        <p className="hero-sub">The launch score for vibe-coded apps.</p>
-        <ScanForm initialUrl={rescanUrl} />
-        <p className="microcopy">FREE · ABOUT 60 SECONDS · NO SIGNUP</p>
-      </div>
-      <HeroReportPreview />
-    </section>
+    <div className="landing-stage">
+      <ChromeRibbon className="chrome-ribbon--stage" />
+      <header className="wrap masthead">
+        <Link className="brand" href="https://regularbasis.studio"><span className="brand-name">Ready for Real<span className="brand-dot">.</span></span><span className="brand-sub">Launch Readiness</span></Link>
+        <span className="mast-meta">A REGULAR BASIS RELEASE · BERLIN</span>
+      </header>
+      <section className="wrap hero" aria-labelledby="hero-title">
+        <div className="hero-content">
+          <h1 id="hero-title">Will Your Launch Page Convert a <em>Stranger?</em></h1>
+          <p className="hero-sub">The launch score for vibe-coded apps.</p>
+          <ScanForm initialUrl={rescanUrl} />
+          <p className="microcopy">FREE · ABOUT 60 SECONDS · NO SIGNUP</p>
+        </div>
+        <HeroReportPreview />
+      </section>
+    </div>
     <section className="wrap editorial" aria-labelledby="checks-title">
       <div className="section-head"><h2 id="checks-title">Seven views of your launch page.</h2><p>One report connects the first impression to the details behind it, with each finding tied to recorded evidence.</p></div>
       <ol className="check-list">{checks.map(([title, signal, copy], i) => <li key={title} data-check={i}><span className="check-num" aria-hidden="true">0{i + 1}</span><div className="check-copy"><h3>{title}</h3><p className="check-signal">{signal}</p></div><p>{copy}</p></li>)}</ol>
