@@ -18,9 +18,9 @@ export default async function OpenGraphImage({ params }: PageProps<"/r/[id]">) {
   const [interDisplay, geistMono, logo] = await Promise.all([
     readFile(path.join(process.cwd(), "public/fonts/inter-display-medium.ttf")),
     readFile(path.join(process.cwd(), "public/fonts/geist-mono.ttf")),
-    readFile(path.join(process.cwd(), "public/r4r-logo.png")),
+    readFile(path.join(process.cwd(), "public/r4r-logo.jpg")),
   ]);
   const data = buildShareCardData(publicScan(scan));
-  const logoSrc = `data:image/png;base64,${logo.toString("base64")}`;
+  const logoSrc = `data:image/jpeg;base64,${logo.toString("base64")}`;
   return new ImageResponse(renderShareCard({ data, variant: "score", width: size.width, height: size.height, logoSrc }), { ...size, fonts: [{ name: "Inter Display", data: interDisplay, style: "normal", weight: 500 }, { name: "Geist Mono", data: geistMono, style: "normal", weight: 400 }] });
 }
