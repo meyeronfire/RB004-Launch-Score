@@ -41,7 +41,7 @@ function severityChips(data: ShareCardData, fontSize: number) {
   </div>;
 }
 
-export function renderShareCard({ data, variant, width, height, wordmarkSrc }: { data: ShareCardData; variant: ShareVariant; width: number; height: number; wordmarkSrc: string }): React.ReactElement {
+export function renderShareCard({ data, variant, width, height, logoSrc }: { data: ShareCardData; variant: ShareVariant; width: number; height: number; logoSrc: string }): React.ReactElement {
   const tall = height > width;
   const pad = Math.round(width * 0.055);
   const scoreSize = tall ? Math.round(width * 0.34) : Math.round(height * 0.42);
@@ -50,15 +50,15 @@ export function renderShareCard({ data, variant, width, height, wordmarkSrc }: {
 
   const header = <div style={{ display: "flex", alignItems: "center", gap: 22, position: "relative" }}>
     {/* eslint-disable-next-line @next/next/no-img-element -- Satori needs a self-contained data URI in ImageResponse. */}
-    <img src={wordmarkSrc} alt="VERDKT" width={Math.round(width * 0.14)} height={Math.round(width * 0.14 / 3)} />
-    <span style={{ display: "flex", fontFamily: MONO, fontSize: Math.round(width * 0.012), color: "#a8a8a8", letterSpacing: 2 }}>LAUNCH SCORE</span>
+    <img src={logoSrc} alt="" width={Math.round(width * 0.045)} height={Math.round(width * 0.045)} />
+    <span style={{ display: "flex", fontFamily: MONO, fontSize: Math.round(width * 0.012), color: "#a8a8a8", letterSpacing: 2 }}>LAUNCH READINESS</span>
   </div>;
 
   const footer = <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #292929", paddingTop: Math.round(height * 0.025), position: "relative" }}>
     <span style={{ display: "flex", fontFamily: MONO, fontSize: Math.round(width * 0.014), color: "#e5e5e5" }}>How ready is your launch?</span>
     <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
-      <span style={{ display: "flex", fontSize: Math.round(width * 0.013) }}>VERDKT · rb004.vercel.app</span>
-      <span style={{ display: "flex", fontFamily: MONO, fontSize: Math.round(width * 0.011), color: "#8a8a8a", letterSpacing: 1 }}>SCANNED WITH VERDKT</span>
+      <span style={{ display: "flex", fontSize: Math.round(width * 0.013) }}>Ready for Real · readyforreal.dev</span>
+      <span style={{ display: "flex", fontFamily: MONO, fontSize: Math.round(width * 0.011), color: "#8a8a8a", letterSpacing: 1 }}>SCANNED WITH READY FOR REAL</span>
     </div>
   </div>;
 
