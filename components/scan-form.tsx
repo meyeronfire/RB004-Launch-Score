@@ -91,7 +91,7 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     {scanAvailable === false && <p className="microcopy form-error" role="status">Scanning is temporarily unavailable. Please try again shortly.</p>}
     {(ownerAccess && !paidRescan) && <p className="microcopy free-scan-remaining">Free scanning enabled for this site</p>}
     {(remaining !== null && !needsEmail && !waitlistMode && !paidRescan && !ownerAccess) && <p className="microcopy free-scan-remaining">{remaining} free scan{remaining === 1 ? "" : "s"} left</p>}
-    {(needsEmail || waitlistMode) && <p className="microcopy free-access-copy">{waitlistMode ? "Free scans are paused for today, back tomorrow." : "{email.trim() ? "Click “Email me a link” to verify this address and unlock two more free scans." : "Add your email to unlock two more free scans. One free scan is available without an account."}"}</p>}
+    {(needsEmail || waitlistMode) && <p className="microcopy free-access-copy">{waitlistMode ? "Free scans are paused for today, back tomorrow." : email.trim() ? "Click “Email me a link” to verify this address and unlock two more free scans." : "Add your email to unlock two more free scans. One free scan is available without an account."}</p>}
     {notice && <p className="microcopy free-access-notice" role="status">{notice}</p>}
   </>;
 }
