@@ -27,9 +27,6 @@ export async function POST(request: Request) {
   try {
     const target = normalizePublicUrl((payload as { url: string }).url);
     const ownerBypass = isOwnerScanTarget(target);
-    const limit = await rateLimit(request);
-    if (limit.misconfigured) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
-    if (!limit.allowed) return Response.json({ error: "That’s five scan requests in the past hour. Please try again later." }, { status: 429, headers: { "Retry-After": "3600" } });
     const cached = await findCachedScan(target.toString());
     const rescanToken = cookieValue(request, PAID_RESCAN_COOKIE);
     const paidAccess = rescanToken ? await verifyPaidRescanToken(rescanToken, undefined, target.toString()) : undefined;
@@ -40,6 +37,10 @@ export async function POST(request: Request) {
     }
     const canUseCache = Boolean(cached);
     if (!canUseCache && process.env.NODE_ENV === "production" && !(await hasLiveWorker())) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
+    // Readiness failures must not use a visitor's hourly request allowance. The recovery namespace clears slots consumed by the broken attempts.
+    const limit = await rateLimit(request, "scan-recovery-20261109");
+    if (limit.misconfigured) return Response.json({ error: "Scanning is temporarily unavailable. Please try again later." }, { status: 503 });
+    if (!limit.allowed) return Response.json({ error: "That’s five scan requests in the past hour. Please try again later." }, { status: 429, headers: { "Retry-After": "3600" } });
     const scan = cached ?? await createScan(target.toString(), { paid: Boolean(paidAccess), paidRescanExpiresAt: paidAccess?.expires_at.toISOString(), freeAdmission: paidAccess ? undefined : { device: clientDeviceHash, ip: rawIpHash, sessionToken: ownerBypass ? undefined : cookieValue(request, FREE_SESSION_COOKIE) || undefined, skipIdentityLimits: ownerBypass } });
     const status = ownerBypass || paidAccess ? undefined : await freeStatus({ device: clientDeviceHash, ip: rawIpHash, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) || undefined });
     const response = Response.json({ id: scan.id, status: scan.status, remaining: status?.remaining ?? null, cached: canUseCache }, { status: 202, headers: { "Cache-Control": "no-store" } });
