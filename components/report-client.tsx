@@ -136,7 +136,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     if (!prompt) return;
     const url = URL.createObjectURL(new Blob([prompt], { type: "text/plain;charset=utf-8" }));
     const link = document.createElement("a");
-    link.href = url; link.download = `verdkt-${tool.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-fix-prompt.txt`;
+    link.href = url; link.download = `ready-for-real-${tool.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-launch-prompt.txt`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
