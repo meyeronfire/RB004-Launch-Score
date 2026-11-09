@@ -109,7 +109,7 @@ describe("report presentation", () => {
     expect(findingResult({ ...finding, category: "technical", title: "Some same-site links returned an HTTP error", evidence: "One link returned HTTP 404. Three other checks were unknown." })).toBe("Confirmed issue");
     const prompt = promptVariants({ url: "https://example.test/", title: "Example", stack: [], findings: [form, finding], copyDrafts: emptyDrafts() }).Codex;
     expect(prompt.indexOf("Missing Content-Security-Policy")).toBeLessThan(prompt.indexOf("## Separate verification tasks"));
-    expect(prompt.indexOf("A form action could not be confirmed")).toBeGreaterThan(prompt.indexOf("## Separate verification tasks"));
+    expect(prompt).toContain("## Separate verification tasks\n1. A form action could not be confirmed");
   });
 
   it("shows unavailable positive timings honestly and keeps robots policy separate", () => {

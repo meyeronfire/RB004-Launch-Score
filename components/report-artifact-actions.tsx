@@ -29,14 +29,14 @@ export function ReportArtifactActions({ report, paidData }: { report: PublicAudi
   }
 
   return <section className="wrap depth-section report-artifacts" aria-labelledby="report-artifacts-title">
-    <div className="report-section-title"><h2 id="report-artifacts-title">Take the audit with you.</h2><span className="mono">AGENT-READY EXPORTS</span></div>
-    <p className="report-artifacts-copy">Share a concise summary or export the measured checks, evidence, and score breakdown. Full fixes and tool-specific prompts are included only in a purchased report.</p>
+    <div className="report-section-title"><h2 id="report-artifacts-title">Take your launch plan with you.</h2><span className="mono">AGENT-READY EXPORTS</span></div>
+    <p className="report-artifacts-copy">Share a concise summary or export the measured checks, evidence, and score breakdown. The purchased report also exports its personalized launch checklist and full tool-specific agent prompts.</p>
     <div className="report-artifact-actions">
       <button type="button" onClick={() => void copySummary()}>Copy quick summary</button>
       <button type="button" onClick={() => saveText(`${fileBase}-launch-score.md`, "text/markdown;charset=utf-8", artifacts.markdown)}>Download Markdown</button>
       <button type="button" onClick={() => saveText(`${fileBase}-launch-score.json`, "application/json;charset=utf-8", artifacts.json)}>Download JSON</button>
-      {artifacts.promptText && <button type="button" onClick={() => saveText(`${fileBase}-fix-prompts.md`, "text/markdown;charset=utf-8", artifacts.promptText!)}>Download fix prompts</button>}
-      {!paidData && report.id !== "example" && <a href="#unlock">Full report + tool-specific prompts · ${PRICE_FIX_PROMPT_USD}</a>}
+      {artifacts.promptText && <button type="button" onClick={() => saveText(`${fileBase}-launch-plan-prompts.md`, "text/markdown;charset=utf-8", artifacts.promptText!)}>Download launch plan + prompts</button>}
+      {!paidData && report.id !== "example" && <a href="#unlock">Launch plan + full agent prompt · ${PRICE_FIX_PROMPT_USD}</a>}
     </div>
     <p className="report-artifact-status mono" role="status" aria-live="polite">{status}</p>
   </section>;

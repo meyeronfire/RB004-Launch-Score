@@ -41,7 +41,7 @@ export function verifyStripeEvent(stripe: Stripe, raw: string, signature: string
 export async function makeCheckout(scanId: string) {
   const scan = await readScan(scanId);
   if (!scan || scan.status !== "complete") throw new Error("The scan must be complete before checkout.");
-  if (!scan.paidPayload?.available) throw new Error("A complete Fix Prompt is not available for this scan yet.");
+  if (!scan.paidPayload?.available) throw new Error("A complete Launch Plan is not available for this scan yet.");
   const sql = database(); if (!sql) throw new Error("The purchase database is not configured.");
   const stripe = stripeClient(); if (!stripe) throw new Error("Stripe checkout is not configured.");
   if (!process.env.STRIPE_WEBHOOK_SECRET) throw new Error("Stripe webhook is not configured. Add STRIPE_WEBHOOK_SECRET before offering checkout.");
@@ -63,7 +63,7 @@ export async function makeCheckout(scanId: string) {
   });
   const session = await stripe.checkout.sessions.create({
       mode: "payment", payment_method_types: ["card"], client_reference_id: scanId, customer_creation: "always", expires_at: expiresAt,
-      line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: PRICE_FIX_PROMPT_USD * 100, product_data: { name: `${PRODUCT_NAME} Fix Prompt — ${RELEASE_CODE}`, description: `Full report and tool-specific fix prompt for ${scan.domain ?? "this page"}` } } }],
+      line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: PRICE_FIX_PROMPT_USD * 100, product_data: { name: `${PRODUCT_NAME} Launch Plan — ${RELEASE_CODE}`, description: `Personalized launch plan, full report, owner checklist, and coding-agent prompts for ${scan.domain ?? "this page"}` } } }],
       metadata: { scanId, releaseCode: RELEASE_CODE, oneTime: "true", checkoutAttemptId: attemptId },
       success_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=complete`, cancel_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=cancelled`,
   }, { idempotencyKey: attemptId });

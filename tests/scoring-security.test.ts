@@ -77,19 +77,23 @@ describe("free and paid report boundaries", () => {
     findings: Array.from({ length: 5 }, (_, index) => ({ id: `finding-${index}`, category: "trust" as const, severity: "low" as const, title: `Finding ${index}`, why_it_matters: "A reason.", evidence: "private evidence", fix: "private fix" })),
     paid: false, leaseToken: "private-lease", leadEmail: "private@example.test", paidPayload: { available: true, prompts: { Cursor: "private prompt" }, findings: [], copyDrafts: { status: "private", headlines: [], subheadline: "", cta: "", faq: "", metaTitle: "", metaDescription: "" } },
   };
-  it("projects only the free finding allowance, with truncated evidence and no paid implementation content", () => {
+  it("shows concise evidence for every finding while keeping fixes and paid content private", () => {
     const projection = publicScan(report) as Record<string, unknown>;
     const findings = projection.findings as Array<Record<string, unknown>>;
     expect(findings).toHaveLength(3);
     expect(findings[0]).toMatchObject({ title: "Finding 0", why_it_matters: "A reason.", evidence: "private evidence" });
     expect(findings[0].section).toBe("other");
     expect(findings[0]).not.toHaveProperty("fix");
+    const additionalFindings = projection.additionalFindings as Array<Record<string, unknown>>;
+    expect(additionalFindings).toHaveLength(2);
+    expect(additionalFindings[0]).toMatchObject({ title: "Finding 3", evidence: "private evidence" });
+    expect(additionalFindings[0]).not.toHaveProperty("fix");
     const longEvidence = { ...report, findings: [{ ...report.findings[0], evidence: "x".repeat(500) }, ...report.findings.slice(1)] } as typeof report;
     const truncated = (publicScan(longEvidence) as Record<string, unknown>).findings as Array<Record<string, unknown>>;
     expect((truncated[0].evidence as string).length).toBeLessThanOrEqual(201);
-    expect(projection.lockedCount).toBe(2); expect(projection.lockedTitles).toEqual([]);
-    expect(JSON.stringify(projection)).not.toContain("Finding 3");
-    expect(JSON.stringify(projection)).not.toContain("Finding 4");
+    expect(projection.lockedCount).toBe(0); expect(projection.lockedTitles).toEqual([]);
+    expect(additionalFindings[1].title).toBe("Finding 4");
+    expect(JSON.stringify(projection)).not.toContain("private fix");
     const scoredReport = { ...report, scoreBreakdown: { categories: {}, top: report.findings.map((finding) => ({ title: finding.title, category: finding.category, severity: finding.severity, penalty: 3 })) } } as Parameters<typeof publicScan>[0];
     const publicBreakdown = (publicScan(scoredReport) as { scoreBreakdown: { top: Array<{ title: string }> } }).scoreBreakdown;
     expect(publicBreakdown.top).toEqual([]);

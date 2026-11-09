@@ -19,6 +19,7 @@ import { auditFinding, detectFrontendSecrets, extractSameOriginApiRoutes, formFi
 import { calculateAuditCounts } from "./audit-counts";
 import { releaseFreeScanReservation, reserveFreeScan, settleScanCost } from "./free-tier";
 import { isOwnerScanRedirectAllowed, isOwnerScanTarget } from "./owner-scan-access";
+import { inspectLinkedPage } from "./page-audit";
 
 const asDataUrl = (buffer: Buffer) => `data:image/jpeg;base64,${buffer.toString("base64")}`;
 const now = () => new Date().toISOString();
@@ -462,6 +463,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     const linkResult = await checkStatus(auditTargets);
     // Whole-site mini-audit: deterministic checks on up to 4 same-origin subpages.
     const wholeSiteFindings: Finding[] = [];
+    const linkedPages: NonNullable<ScanRecord["linkedPages"]> = [];
     let subpagesAudited = 0;
     {
       const priorityPattern = /pricing|about|contact|features|how|story|blog|docs|imprint|legal|security|faq/i;
@@ -469,28 +471,24 @@ async function processScanCore(id: string, leaseToken?: string) {
         .sort((a, b) => Number(priorityPattern.test(b)) - Number(priorityPattern.test(a)))
         .slice(0, 4);
       for (const candidate of candidates) {
+        const pageUrlObj = new URL(candidate);
+        const path = pageUrlObj.pathname;
         try {
-          const pageUrlObj = new URL(candidate);
           await assertRobotsAllows(pageUrlObj);
           const res = await safeFetch(pageUrlObj.toString(), { timeoutMs: 6000, maxBytes: 600_000, maxRedirects: 2, beforeRedirect: assertRobotsAllows, budget: requestBudget });
-          const path = pageUrlObj.pathname;
+          const pageAudit = inspectLinkedPage(path, res.status, String(res.headers["content-type"] ?? ""), res.body.toString("utf8"));
+          linkedPages.push(pageAudit);
           if (res.status >= 400) { wholeSiteFindings.push(auditFinding("technical", "technical", res.status >= 500 ? "high" : "medium", "A linked page returned an HTTP error", "Broken internal pages make the site look unfinished and can cost visitors mid-journey.", `${path} returned HTTP ${res.status}.`, "Fix the page or remove the link that points to it.")); continue; }
-          if (!/text\/html/i.test(String(res.headers["content-type"] ?? ""))) continue;
+          if (pageAudit.note) continue;
           subpagesAudited++;
-          const htmlText = res.body.toString("utf8");
-          const title = /<title[^>]*>([^<]{0,200})<\/title>/i.exec(htmlText)?.[1]?.trim() ?? "";
-          const description = /<meta[^>]+name=["']description["'][^>]*content=["']([^"']{0,300})["']/i.exec(htmlText)?.[1]?.trim() ?? "";
-          const h1Count = (htmlText.match(/<h1[\s>]/gi) ?? []).length;
-          const imgTags = htmlText.match(/<img\b[^>]*>/gi) ?? [];
-          const imgNoAlt = imgTags.filter((tag) => !/\balt\s*=\s*["'][^"'\s][^"']*["']/i.test(tag)).length;
-          const noindex = /<meta[^>]+name=["']robots["'][^>]*content=["'][^"']*noindex/i.test(htmlText);
+          const { title = "", descriptionPresent = false, h1Count = 0, imageCount = 0, imagesMissingAlt = 0, noindex = false } = pageAudit;
           if (noindex) wholeSiteFindings.push(auditFinding("seo", "technical", "A linked subpage is marked noindex", "Internal pages blocked from indexing are invisible to search engines and answer engines.", `${path} carries a noindex robots meta.`, "Remove the noindex directive unless the page is intentionally private."));
           if (!title || /^(?:vite\s*\+\s*react|create next app|lovable app)$/i.test(title)) wholeSiteFindings.push(auditFinding("seo", "clarity", "A subpage is missing a proper page title", "Page titles are the primary search and browser-tab signal for every page.", `${path} has ${title ? `the template title "${title}"` : "no <title> element"}.`, `Add a unique, descriptive <title> (about 50-60 characters) for ${path}.`));
           else if (title.length < 12 || title.length > 70) wholeSiteFindings.push(auditFinding("seo", "technical", "A subpage title is outside the usual length range", "Very short or very long titles are truncated or diluted in search results.", `${path} title is ${title.length} characters: "${title.slice(0, 60)}".`, "Rewrite the title to about 50-60 characters with the page's main keyword."));
-          if (!description) wholeSiteFindings.push(auditFinding("seo", "clarity", "A subpage is missing its meta description", "Meta descriptions are the default snippet in search results and social shares.", `${path} has no meta description.`, `Add a meta description (about 140-160 characters) summarizing ${path}.`));
+          if (!descriptionPresent) wholeSiteFindings.push(auditFinding("seo", "clarity", "A subpage is missing its meta description", "Meta descriptions are the default snippet in search results and social shares.", `${path} has no meta description.`, `Add a meta description (about 140-160 characters) summarizing ${path}.`));
           if (h1Count !== 1) wholeSiteFindings.push(auditFinding("seo", "technical", "A subpage has no single H1 heading", "Exactly one H1 gives search engines and screen readers the page's main topic.", `${path} has ${h1Count === 0 ? "no" : `${h1Count}`} H1 headings.`, `Use exactly one descriptive H1 on ${path}.`));
-          if (imgTags.length && imgNoAlt) wholeSiteFindings.push(auditFinding("seo", "technical", "A subpage ships images without alt text", "Alt text makes images readable to search engines and screen readers.", `${imgNoAlt} of ${imgTags.length} images on ${path} have no alt attribute.`, `Add descriptive alt attributes to the images on ${path}.`));
-        } catch { /* one unreachable subpage never blocks the scan */ }
+          if (imageCount && imagesMissingAlt) wholeSiteFindings.push(auditFinding("seo", "technical", "A subpage ships images without alt text", "Alt text makes images readable to search engines and screen readers.", `${imagesMissingAlt} of ${imageCount} images on ${path} have no alt attribute.`, `Add descriptive alt attributes to the images on ${path}.`));
+        } catch { linkedPages.push({ path, state: "unknown", note: "Could not inspect within scan limits or robots policy." }); }
       }
     }
     const robots = policy.robots;
@@ -624,7 +622,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), scoreBreakdown: scored.scoreBreakdown,
       checks: checkResults, categoryCoverage: scored.categoryCoverage, aiCrawlerReport, lighthouse: { mobile: psi, desktop: psiDesktop, source: "via Google PageSpeed Insights" }, sharePreview: { title: snap.ogTitle || snap.title, description: snap.ogDescription || snap.description }, shareImageUrl,
       desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 3, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
-      stackHints: hints, contentReview: contentReview.status, paidPayload }, leaseToken);
+      stackHints: hints, contentReview: contentReview.status, linkedPages, paidPayload }, leaseToken);
     await settleScanCost({ scanId: id, paid: Boolean(current.paid), browserMs, inputTokens: modelInputTokens, outputTokens: modelOutputTokens, model: scanModel });
     for (const script of scripts) script.source = "";
     snap.html = "";

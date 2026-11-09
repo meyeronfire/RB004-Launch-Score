@@ -1,0 +1,8 @@
+.codex
+.cursor
+.git
+.next
+node_modules
+tests
+.env*
+data

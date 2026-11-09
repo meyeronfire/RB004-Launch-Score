@@ -117,7 +117,13 @@ export function publicScan(scan: ScanRecord) {
   const encryptionKey = Buffer.from(process.env.REPORT_TOKEN_ENCRYPTION_KEY ?? "", "base64");
   const checkoutConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.DATABASE_URL && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && encryptionKey.length === 32 && (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SITE_URL));
   if (!checkoutConfigured && !stripeWarningLogged) { console.warn("Paid unlock is hidden because checkout dependencies are not fully configured."); stripeWarningLogged = true; }
-  const publicFindings = (scan.findings ?? []).slice(0, 3);
+  const allFindings = scan.findings ?? [];
+  const publicFindings = allFindings.slice(0, 3);
+  const additionalFindings = allFindings.slice(3).map(({ id, code, category, section, severity, title, why_it_matters, evidence }) => ({
+    id, code, category, section: section ?? "other", severity, title,
+    why_it_matters: why_it_matters.length > 240 ? `${why_it_matters.slice(0, 240)}…` : why_it_matters,
+    evidence: evidence.length > 240 ? `${evidence.slice(0, 240)}…` : evidence,
+  }));
   const publicScoreBreakdown = safe.scoreBreakdown ? { ...safe.scoreBreakdown, top: [] } : undefined;
   return { ...safe,
     paidAvailable: Boolean(scan.paidPayload?.available),
@@ -126,10 +132,11 @@ export function publicScan(scan: ScanRecord) {
     checkoutAvailable: Boolean(scan.paidPayload?.available && checkoutConfigured),
     shareImageAvailable: Boolean(scan.shareImageUrl),
     findings: publicFindings.map(({ id, code, category, section, severity, title, why_it_matters, evidence }) => ({ id, code, category, section: section ?? "other", severity, title, why_it_matters, evidence: evidence.length > 200 ? `${evidence.slice(0, 200)}…` : evidence })),
+    additionalFindings,
     scoreBreakdown: publicScoreBreakdown,
     findingCounts,
     categoryCoverage: scan.categoryCoverage,
-    lockedCount: Math.max(0, (scan.findings?.length ?? 0) - 3),
+    lockedCount: 0,
     lockedTitles: [],
   };
 }

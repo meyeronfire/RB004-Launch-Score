@@ -11,6 +11,7 @@ export type MetricCheck = { state: CheckState; value?: string | number; note?: s
 export type AiCrawlerPolicy = { name: string; userAgent: string; purpose: string; policy: "allowed" | "blocked" | "no_matching_rule" | "unknown"; matchedRules: Array<{ directive: "allow" | "disallow"; path: string }>; requestTested: false };
 export type AiCrawlerPreference = { signal: string; label: string; status: "blocked" | "allowed" | "not_declared" | "unknown"; matchedRules: Array<{ directive: "allow" | "disallow"; path: string }> };
 export type AiCrawlerReport = { state: "checked" | "unknown"; robotsUrl?: string; fetchedAt: string; policies: AiCrawlerPolicy[]; preferences: AiCrawlerPreference[]; note: string };
+export type LinkedPageAudit = { path: string; state: "checked" | "unknown"; status?: number; title?: string; descriptionPresent?: boolean; h1Count?: number; imageCount?: number; imagesMissingAlt?: number; noindex?: boolean; note?: string };
 export type LighthouseStrategy = { performance: MetricCheck; accessibility: MetricCheck; bestPractices: MetricCheck; seo: MetricCheck; lcp: MetricCheck; cls: MetricCheck; inpTbt: MetricCheck };
 export type LighthouseReport = { mobile: LighthouseStrategy; desktop: LighthouseStrategy; source: "via Google PageSpeed Insights" };
 export type CaptureSegment = { image: string; top: number; width: number; height: number };
@@ -28,6 +29,7 @@ export type ScanRecord = {
   checks?: Record<string, MetricCheck>; desktopImage?: string; mobileImage?: string;
   lighthouse?: LighthouseReport;
   aiCrawlerReport?: AiCrawlerReport;
+  linkedPages?: LinkedPageAudit[];
   annotatedCapture?: AnnotatedCapture;
   auditCounts?: { checksRun: number; passed: number; issues: number };
   scoreBreakdown?: ScoreBreakdown;

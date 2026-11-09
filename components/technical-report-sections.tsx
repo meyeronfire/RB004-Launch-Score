@@ -2,11 +2,11 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import type { AiCrawlerReport, LighthouseStrategy, LighthouseReport, MetricCheck } from "@/lib/types";
+import type { AiCrawlerReport, LighthouseStrategy, LighthouseReport, LinkedPageAudit, MetricCheck } from "@/lib/types";
 import { GlassCard } from "@/components/glass-card";
 import { SHARE_FORMATS, type ShareFormat, type ShareVariant } from "@/lib/share-card";
 
-type ReportView = { id: string; url: string; title?: string; description?: string; lighthouse?: LighthouseReport; aiCrawlerReport?: AiCrawlerReport; sharePreview?: { title: string; description: string };  shareImageAvailable?: boolean;  checks?: Record<string, MetricCheck>; createdAt?: string };
+type ReportView = { id: string; url: string; finalUrl?: string; title?: string; description?: string; lighthouse?: LighthouseReport; aiCrawlerReport?: AiCrawlerReport; linkedPages?: LinkedPageAudit[]; sharePreview?: { title: string; description: string }; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; createdAt?: string };
 const strategies = [["performance", "Performance"], ["accessibility", "Accessibility"], ["bestPractices", "Best Practices"], ["seo", "SEO"]] as const;
 const displayCheck = (value?: { state?: string; value?: number | string }, unit = "") => value?.state === "checked" && value.value !== undefined ? `${value.value}${unit}` : "Unavailable";
 const displayMetric = (value?: MetricCheck, unit = "") => value?.state === "checked" && value.value !== undefined ? `${value.value}${typeof value.value === "number" ? unit : ""}` : "Unavailable";
@@ -43,6 +43,27 @@ export function TechnicalReportSections({ scan, onRetryLighthouse }: { scan: Rep
       <div className="browser-timing"><h3>Browser timing · desktop capture</h3><p className="coverage-note">Playwright navigation and paint observations for the audited page. These are a separate lab source from PageSpeed. An unavailable timing means the browser did not record a positive event time; zero is not treated as a fast result.</p><div className="check-evidence">{([ ["DOMContentLoaded", "speedDcl"], ["Load complete", "speedLoad"], ["First contentful paint", "speedFcp"], ["Largest contentful paint", "speedLcp"], ["Layout shift", "speedCls"] ] as const).map(([label, key]) => <div key={key}><span>{label}</span><strong>{browserTiming(scan.checks?.[key], key !== "speedCls")}</strong></div>)}</div></div>
     </section>
 
+    {Boolean(scan.linkedPages?.length) && <section className="wrap depth-section linked-pages-section" aria-labelledby="linked-pages-title">
+      <div className="report-section-title"><div><h2 id="linked-pages-title">Linked pages sampled.</h2><p>Lightweight checks on up to four important same-site links.</p></div><span className="mono">HTML SIGNALS · NOT A FULL SITE CRAWL</span></div>
+      <p className="coverage-note">The entry page receives the full desktop and mobile audit above. These linked pages are checked for HTTP availability and basic HTML signals only.</p>
+      <div className="linked-pages-list">{scan.linkedPages?.map((page) => {
+        let href: string | undefined;
+        try { href = new URL(page.path, scan.finalUrl ?? scan.url).toString(); } catch { href = undefined; }
+        return <article className="linked-page-row" key={page.path}>
+          <div className="linked-page-heading"><a href={href} target="_blank" rel="noreferrer">{page.path}</a><span className={`linked-page-state linked-page-state--${page.state}`}>{page.state === "unknown" ? "Unknown" : `HTTP ${page.status ?? "—"}`}</span></div>
+          <p className="linked-page-title">{page.title || page.note || "No page title detected."}</p>
+          {page.state === "checked" && !page.note && <div className="linked-page-signals">
+            <span>{page.descriptionPresent ? "Meta description present" : "Meta description missing"}</span>
+            <span>{page.h1Count === 1 ? "1 H1" : `${page.h1Count ?? 0} H1 headings`}</span>
+            <span>{page.imageCount ? `${page.imagesMissingAlt ?? 0}/${page.imageCount} images have no alt attribute` : "No images detected"}</span>
+            <span>{page.noindex ? "Noindex set" : "No noindex detected"}</span>
+          </div>}
+          {page.state === "checked" && page.note && <p className="linked-page-note">{page.note}</p>}
+          {page.state === "unknown" && <p className="linked-page-note">{page.note ?? "Could not confirm this page."}</p>}
+        </article>;
+      })}</div>
+    </section>}
+
     {scan.aiCrawlerReport && <section className="wrap depth-section ai-crawler-section" aria-labelledby="ai-crawler-title">
       <div className="report-section-title"><h2 id="ai-crawler-title">AI crawlers.</h2><span className="mono">ROBOTS.TXT · NOT SCORED</span></div>
       <p className="coverage-note">Policy read for <strong>{scan.aiCrawlerReport.robotsUrl ?? "robots.txt"}</strong> and the scanned path. This is not a request made as any listed bot.</p>
@@ -58,6 +79,24 @@ export function TechnicalReportSections({ scan, onRetryLighthouse }: { scan: Rep
       <details className="ai-crawler-detail ai-data-use"><summary>Training and data-use preference signals ({scan.aiCrawlerReport.preferences.length})</summary><p>Shown separately from the score. A robots.txt declaration is a preference signal, not proof that a provider honors it or how it uses data.</p><div className="ai-crawler-list">{scan.aiCrawlerReport.preferences.map((preference) => <article className="ai-crawler-row" key={preference.signal}><div className="ai-crawler-title"><strong>{preference.label}</strong><span className="mono">{preferenceLabels[preference.status]}</span></div><p className="mono">{preference.signal}{preference.matchedRules.length ? ` · ${preference.matchedRules.map((rule) => `${rule.directive}: ${rule.path}`).join(" · ")}` : " · no matching declaration"}</p></article>)}</div></details>
       <p className="coverage-note">{scan.aiCrawlerReport.note}</p>
     </section>}
+
+    <section className="wrap depth-section owner-checks-section" aria-labelledby="owner-checks-title">
+      <div className="report-section-title"><div><h2 id="owner-checks-title">Code and operations checks.</h2><p>Important launch checks this public scan cannot verify.</p></div><span className="mono">OWNER CONFIRMATION · NOT SCORED</span></div>
+      <details className="owner-checks">
+        <summary>Open owner checklist <span>7 checks</span></summary>
+        <p className="coverage-note">These require repository, account, or infrastructure access. This report has not verified them. Skip anything that does not apply to your app.</p>
+        <div className="owner-check-grid">
+          <article><span className="mono">DATA &amp; ACCESS</span><strong>Access controls and rate limits</strong><p>Review server endpoints, not only the visible interface. Confirm sensitive routes require the right access and public endpoints are rate limited.</p></article>
+          <article><span className="mono">DATA &amp; ACCESS</span><strong>Backups and restore</strong><p>Confirm production data is backed up and that a restore has been tested.</p></article>
+          <article><span className="mono">SECRETS</span><strong>Repository history</strong><p>Check current files and commit history for exposed credentials. Rotate any key that was exposed.</p></article>
+          <article><span className="mono">BILLING</span><strong>Spend limits and alerts</strong><p>For paid APIs, including AI providers, set a budget limit and alerts before launch.</p></article>
+          <article><span className="mono">RELEASE</span><strong>Rollback path</strong><p>Know how to restore the last working version if a deployment causes problems.</p></article>
+          <article><span className="mono">TESTING</span><strong>Automated checks</strong><p>Run unit or regression tests and a launch smoke check in CI before publishing.</p></article>
+          <article><span className="mono">AI APPS · IF APPLICABLE</span><strong>Model failure handling</strong><p>Test slow or unavailable model responses, prompt injection, and token or context limits.</p></article>
+        </div>
+        <p className="owner-check-attribution">Checklist inspired by the <a href="https://github.com/pepperworks/vibe-coders-checklist" target="_blank" rel="noreferrer">Vibe Coder’s Production Ready Checklist</a>.</p>
+      </details>
+    </section>
 
   </>;
 }

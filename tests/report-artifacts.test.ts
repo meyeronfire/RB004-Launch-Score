@@ -35,9 +35,10 @@ describe("report audit artifacts", () => {
     ]));
   });
 
-  it("records absent expected checks as unknown and derives coverage from actual check states", () => {
+  it("separates unknown results from checks that were not recorded", () => {
     const missing = getCheckLedger({ contentReview: { state: "unknown", note: "Model review unavailable" } });
-    expect(missing.find((row) => row.key === "canonical")).toMatchObject({ category: "SEO / AEO", status: "unknown" });
+    expect(missing.find((row) => row.key === "canonical")).toMatchObject({ category: "SEO / AEO", status: "not_recorded" });
+    expect(missing.find((row) => row.key === "contentReview")).toMatchObject({ status: "unknown" });
     expect(getCategoryCoverage({ contentReview: { state: "unknown" } }).clarity).toBe(0);
     expect(getCategoryCoverage({ contentReview: { state: "review", value: "Review completed" } }).clarity).toBe(1);
     expect(getCategoryCoverage({ contentReview: { state: "not_applicable", note: "Not applicable" } }).clarity).toBe(0);
@@ -48,7 +49,7 @@ describe("report audit artifacts", () => {
     expect(contentReviewCheck(true, "Five-second review completed.")).toMatchObject({ state: "review", value: "Completed" });
   });
 
-  it("summarizes each category using only its recorded pass, issue, review, unknown, N/A, and measured states", () => {
+  it("summarizes each category and keeps unrecorded checks out of coverage", () => {
     const ledgerChecks: Record<string, MetricCheck> = {
       title: { state: "checked", value: "Missing" },
       h1Count: { state: "checked", value: 1 },
@@ -58,7 +59,7 @@ describe("report audit artifacts", () => {
       ogImage: { state: "checked", value: "1200 × 630" },
     };
     expect(getCategoryCheckStats(ledgerChecks, [], { seo_aeo: 64 }).seo_aeo).toEqual({
-      score: 64, pass: 1, issue: 1, review: 1, unknown: 14, not_applicable: 1, measured: 1,
+      score: 64, pass: 1, issue: 1, review: 1, unknown: 1, not_recorded: 13, not_applicable: 1, measured: 1,
     });
   });
 
@@ -75,6 +76,13 @@ describe("report audit artifacts", () => {
       expect(artifacts.markdown).not.toContain(secret);
       expect(artifacts.json).not.toContain(secret);
     }
+  });
+
+  it("includes linked-page sample evidence in both exports", () => {
+    const artifacts = createReportArtifacts({ ...report, linkedPages: [{ path: "/pricing", state: "checked", status: 200, title: "Plans", descriptionPresent: true, h1Count: 1, imageCount: 1, imagesMissingAlt: 0, noindex: false }] });
+    expect(artifacts.markdown).toContain("## Linked pages sampled");
+    expect(artifacts.markdown).toContain("/pricing · HTTP 200 · title Plans");
+    expect(artifacts.json).toContain('"linkedPages"');
   });
 
   it("exports AI crawler policy separately from training/data-use preferences and the score", () => {
@@ -100,6 +108,9 @@ describe("report audit artifacts", () => {
     const artifacts = createReportArtifacts(report, paid);
     expect(artifacts.markdown).toContain("Add \\<link rel=canonical\\> to the page.");
     expect(artifacts.markdown).toContain("Apply the canonical fix.");
+    expect(artifacts.markdown).toContain("## Personalized launch plan");
+    expect(artifacts.markdown).toContain("Owner confirmation · not checked by the scan");
     expect(artifacts.json).toContain('"Cursor": "Apply the canonical fix."');
+    expect(artifacts.json).toContain('"launchPlan"');
   });
 });
