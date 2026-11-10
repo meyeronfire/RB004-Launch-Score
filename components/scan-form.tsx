@@ -11,6 +11,7 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
   const [needsEmail, setNeedsEmail] = useState(false);
   const [waitlistMode, setWaitlistMode] = useState(false);
   const [notice, setNotice] = useState("");
+  const [emailLinkSent, setEmailLinkSent] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [paidRescan, setPaidRescan] = useState(false);
   const [ownerAccess, setOwnerAccess] = useState(false);
@@ -52,7 +53,8 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
         if (!email.trim()) throw new Error("Enter your email address first.");
         const response = await fetch("/api/free-access", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, purpose: waitlistMode ? "waitlist" : "magic", website: data.get("website") }) });
         const result = await response.json(); if (!response.ok) throw new Error(result.error ?? "That email could not be saved.");
-        setNotice(waitlistMode ? "You’re on the waitlist. We’ll email when free scans return." : "Check your inbox for a sign-in link. It expires in one hour."); setPending(false); return;
+        setEmailLinkSent(!waitlistMode);
+        setNotice(waitlistMode ? "You’re on the waitlist. We’ll email when free scans return." : "Sign-in link sent. Open the email to unlock two more scans. The link expires in one hour."); setPending(false); return;
       }
       const response = await fetch("/api/scans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, website: data.get("website") }) });
       const result = await response.json();
@@ -78,8 +80,8 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     <button type="submit" name="mode" value="scan" disabled={pending}>{pending ? "Starting…" : waitlistMode ? "Join waitlist" : submitLabel}</button>
     {(needsEmail && !waitlistMode) && <>
       <label className="sr-only" htmlFor="scan-email">Email address</label>
-      <input id="scan-email" className="free-email-input" name="email" type="email" autoComplete="email" placeholder="Your email" value={email} onChange={(event) => setEmail(event.target.value)} />
-      <button type="submit" name="mode" value="email" className="free-email-button" disabled={pending}>Email me a link</button>
+      <input id="scan-email" className="free-email-input" name="email" type="email" autoComplete="email" placeholder="Your email" value={email} onChange={(event) => { setEmail(event.target.value); setNotice(""); setError(""); setEmailLinkSent(false); }} />
+      <button type="submit" name="mode" value="email" className="free-email-button" disabled={pending || emailLinkSent}>{emailLinkSent ? "Email sent" : "Email me a link"}</button>
       <input className="scan-honeypot" name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" />
     </>}
     <span id="scan-error" className="sr-only" role="alert">{error}</span>
@@ -87,7 +89,7 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     </form>
     {(ownerAccess && !paidRescan) && <p className="microcopy free-scan-remaining">Free scanning enabled for this site</p>}
     {(remaining !== null && !needsEmail && !waitlistMode && !paidRescan && !ownerAccess) && <p className="microcopy free-scan-remaining">{remaining} free scan{remaining === 1 ? "" : "s"} left</p>}
-    {(needsEmail || waitlistMode) && <p className="microcopy free-access-copy">{waitlistMode ? "Free scans are paused for today, back tomorrow." : "One free scan is used. Verify your email to unlock two more, with three free scans per email."}</p>}
+    {(needsEmail || waitlistMode) && <p className="microcopy free-access-copy">{waitlistMode ? "Free scans are paused for today, back tomorrow." : emailLinkSent ? "Open the sign-in link we sent to your inbox to unlock two more free scans." : email.trim() ? "Click “Email me a link” to verify this address and unlock two more free scans." : "Add your email to unlock two more free scans. One free scan is available without an account."}</p>}
     {notice && <p className="microcopy free-access-notice" role="status">{notice}</p>}
   </>;
 }
