@@ -46,7 +46,8 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     if (pending) return;
     setPending(true); setError("");
     const data = new FormData(event.currentTarget);
-    const mode = String(data.get("mode") ?? "scan");
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    const mode = submitter instanceof HTMLButtonElement ? submitter.value : "scan";
     const url = String(data.get("url") ?? "").trim();
     try {
       if (mode === "email" || (!url && (needsEmail || waitlistMode))) {

@@ -42,10 +42,12 @@ button, input { font: inherit; }
 .report-page .wrap { width: min(100% - 2 * var(--pad), 1180px); }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .masthead { min-height: 76px; display: flex; align-items: center; justify-content: space-between; }
-.brand { display: inline-flex; min-height: 44px; align-items: baseline; gap: 14px; text-decoration: none; font-size: 15px; letter-spacing: -.02em; }
+.brand { display: inline-flex; min-height: 44px; align-items: center; gap: 14px; text-decoration: none; font-size: 15px; letter-spacing: -.02em; }
 .brand-mark { color: var(--accent); font-family: var(--mono); font-size: 12px; }
 .brand-name { font-weight: 640; letter-spacing: .02em; font-size: 17px; }
 .brand-logo { height: 26px; width: auto; display: block; }
+.brand-icon { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: 10px; }
+.brand-dot { color: var(--accent); }
 .brand-sub { color: var(--ink-faint); font-size: 12px; letter-spacing: .02em; }
 .mast-meta { color: var(--ink-faint); font: 11px var(--mono); letter-spacing: .04em; }
 .hero { position: relative; min-height: min(790px, calc(100svh - 76px)); display: grid; grid-template-columns: repeat(12, 1fr); align-items: center; padding-block: clamp(72px, 10vw, 148px); overflow: clip; }
@@ -1138,7 +1140,10 @@ button, input { font: inherit; }
 /* Main page follows the same evidence-first report system. */
 .landing-page { --bg:#090909; --surface:#111; --ink:#f5f5f5; --ink-soft:#c2c2c2; --ink-faint:#999; --line:#303030; --accent:#ff2e7e; --accent-strong:#e91d6c; background:radial-gradient(ellipse at 76% 2%,rgba(255,46,126,.075),transparent 26%),#090909; color:var(--ink); }
 .landing-page .wrap { width:min(100% - 48px,1180px); }
-.landing-page .masthead { min-height:70px; border-bottom:1px solid var(--line); }
+.landing-stage { position:relative; isolation:isolate; overflow:clip; }
+.landing-stage > .chrome-ribbon--stage { top:70px; right:-2%; width:min(64vw,1000px); height:min(420px,28vw); object-fit:cover; object-position:right top; opacity:.72; -webkit-mask-image:radial-gradient(105% 112% at 100% 0%,#000 24%,transparent 76%); mask-image:radial-gradient(105% 112% at 100% 0%,#000 24%,transparent 76%); }
+.landing-stage > .masthead, .landing-stage > .hero { position:relative; z-index:1; }
+.landing-page .masthead { min-height:70px; border-bottom:0; }
 .landing-page .brand-name { font-size:20px; letter-spacing:-.035em; }
 .landing-page .brand-dot { color:var(--accent); }
 .landing-page .hero { min-height:0; padding-block:clamp(54px,7vw,88px) clamp(52px,6vw,76px); column-gap:clamp(24px,4vw,58px); }
@@ -1159,7 +1164,7 @@ button, input { font: inherit; }
 .landing-page .preview-track { grid-column:1; grid-row:2; width:100%; height:3px; }
 .landing-page .preview-track i { background:linear-gradient(90deg,#c8d5dc 0%,#fff 55%,var(--accent) 100%); }
 .landing-page .preview-number { grid-column:2; grid-row:1 / span 2; color:#eee; font-size:11px; text-shadow:0 1px 10px rgba(0,0,0,.85); }
-.landing-page .preview-row--unavailable .preview-track { background:repeating-linear-gradient(135deg,#383838 0 4px,#1b1b1b 4px 8px); }
+.landing-page .preview-row--unavailable .preview-track { background:repeating-linear-gradient(135deg,rgba(226,235,240,.48) 0 3px,rgba(112,124,132,.35) 3px 6px,rgba(29,31,34,.5) 6px 9px); }
 .landing-page .preview-row--unavailable .preview-number { color:#888; }
 .landing-page .preview-finding { margin-top:16px; padding-top:13px; font-size:12px; text-shadow:0 1px 10px rgba(0,0,0,.8); }
 .landing-page .editorial { padding-block:clamp(56px,7vw,78px); border-top-color:var(--line); }
@@ -1225,4 +1230,8 @@ button, input { font: inherit; }
   .landing-page .example-score { font-size:clamp(100px,27vw,174px); }
   .landing-page .pricing { grid-template-columns:1fr; gap:14px; }
   .landing-page .price-item { min-height:0; }
+}
+
+@media (max-width:760px) {
+  .landing-stage > .chrome-ribbon--stage { top:54px; right:-12%; width:102%; max-width:none; height:300px; opacity:.44; -webkit-mask-image:radial-gradient(110% 112% at 100% 0%,#000 20%,transparent 76%); mask-image:radial-gradient(110% 112% at 100% 0%,#000 20%,transparent 76%); }
 }

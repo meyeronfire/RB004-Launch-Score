@@ -12,6 +12,7 @@ const categories = [
   { key: "security", name: "Security" },
   { key: "seo_aeo", name: "SEO / AEO" },
 ];
+const illustrativeCategoryScores: Record<string, number> = { design_brand: 87, security: 85, seo_aeo: 83 };
 
 export function HeroReportPreview() {
   const [value, setValue] = useState(0);
@@ -35,12 +36,13 @@ export function HeroReportPreview() {
     return () => { clearTimeout(timer); cancelAnimationFrame(frame); };
   }, []);
 
-  return <aside className="hero-preview" aria-label="Example launch report preview">
-    <span className="preview-label mono">EXAMPLE SCORE</span>
+  return <aside className="hero-preview" aria-label="Illustrative example launch report preview">
+    <span className="preview-label mono">EXAMPLE SCORE · ILLUSTRATIVE</span>
     <div className="preview-score" aria-label={`Example score ${exampleReport.score} out of 100`}>{value}<span>/100</span></div>
     <div className="preview-categories">
       {categories.map(({ key, name }, index) => {
-        const score = exampleReport.categoryScores?.[key as keyof typeof exampleReport.categoryScores];
+        const recordedScore = exampleReport.categoryScores?.[key as keyof typeof exampleReport.categoryScores];
+        const score = typeof recordedScore === "number" ? recordedScore : illustrativeCategoryScores[key];
         return <div className={`preview-row${typeof score === "number" ? "" : " preview-row--unavailable"}`} key={key}>
           <span>{name}</span><span className="preview-track" aria-hidden="true"><i style={{ "--fill": `${score ?? 0}%`, "--delay": `${index * 90}ms`, "--scale": started && typeof score === "number" ? 1 : 0 } as React.CSSProperties} /></span><span className="preview-number">{score ?? "—"}</span>
         </div>;
