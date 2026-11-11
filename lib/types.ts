@@ -1,7 +1,7 @@
 export type Category = "clarity" | "conversion" | "design_brand" | "trust" | "technical" | "security" | "seo_aeo";
 export type Severity = "critical" | "high" | "medium" | "low";
 export type FindingSection = "security" | "seo" | "leftovers" | "forms" | "technical" | "design" | "other";
-export type Finding = { id: string; code?: string; category: Category; section?: FindingSection; severity: Severity; title: string; why_it_matters: string; evidence: string; fix: string };
+export type Finding = { id: string; code?: string; category: Category; section?: FindingSection; severity: Severity; confidence?: "confirmed" | "review" | "unknown"; title: string; why_it_matters: string; evidence: string; fix: string };
 export type DesignDimensions = { visualHierarchy: number; typography: number; spacingRhythm: number; paletteContrast: number; brandConsistency: number; genericSignals: number };
 export type DesignReview = { state: "checked" | "unknown"; dimensions?: DesignDimensions; score?: number; note?: string };
 export type VisualSample = { device: "Desktop" | "Mobile"; section: string; tag: string; text: string; fontFamily: string; fontSize: number; lineHeight: string; fontWeight: string; color: string; background: string; spacing: string; backgroundImage: string; classes: string; alt: string };
@@ -39,6 +39,7 @@ export type ScanRecord = {
   shareImageUrl?: string;
   domain?: string; title?: string; description?: string; finalUrl?: string; redirects?: string[];
   stackHints?: string[]; contentReview?: string; leadEmail?: string; paid?: boolean; paidRescanExpiresAt?: string;
+  paidRescanTokenHash?: string; paidRescanSessionId?: string; paidRescanUseReleased?: boolean;
   paidPayload?: PaidPayload;
 };
 export type PaidPayload = { available: boolean; paidModelReady?: boolean; findings: Finding[]; prompts: Record<string, string>; model?: string; paidPromptUsage?: { inputTokens: number; outputTokens: number }; copyDrafts: { status: string; headlines: string[]; subheadline: string; cta: string; faq: string; metaTitle: string; metaDescription: string } };

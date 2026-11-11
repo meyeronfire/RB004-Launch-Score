@@ -16,6 +16,7 @@ import { getCheckLedger, getCategoryCheckStats, type CheckStatus } from "@/lib/r
 import { findingResult } from "@/lib/finding-result";
 import { ScrollReveal } from "@/components/scroll-reveal";
 import { promptVariants } from "@/lib/fix-prompts";
+import { exampleReport } from "@/lib/example";
 import { ReportArtifactActions } from "@/components/report-artifact-actions";
 import { ReportFinding } from "@/components/report-finding";
 import { ReportOtherChecks } from "@/components/report-other-checks";
@@ -28,18 +29,29 @@ const toolId = (name: string) => `prompt-tab-${name.toLowerCase().replace(/[^a-z
 const scoreDisplay = (score?: number) => typeof score === "number" ? String(score).padStart(2, "0") : "—";
 const formatUtc = (value?: string, options?: Intl.DateTimeFormatOptions) => value ? `${new Date(value).toLocaleString("en-GB", { ...options, timeZone: "UTC" })} UTC` : "Time unavailable";
 const scanSteps = ["Checking scan permissions…", "Rendering the desktop page…", "Rendering the mobile page…", "Checking links and page signals…", "Preparing the evidence-led report…", "Reviewing visual design…"];
+function examplePaidData() {
+  const findings = exampleReport.findings ?? [];
+  const copyDrafts = { status: "Page-copy drafts were not generated for this historical sample scan.", headlines: [] as string[], subheadline: "", cta: "", faq: "", metaTitle: "", metaDescription: "" };
+  return {
+    available: true,
+    findings,
+    prompts: promptVariants({ url: exampleReport.finalUrl ?? exampleReport.url, title: exampleReport.title ?? "", stack: exampleReport.stackHints ?? [], findings, copyDrafts, scannedAt: exampleReport.createdAt, scoringVersion: exampleReport.scoringVersion }),
+    copyDrafts,
+  };
+}
 
 export function ReportClient({ initial }: { initial: FreeReport }) {
-  const [scan, setScan] = useState(initial as FreeReport & { findings?: Finding[]; lockedTitles?: string[]; lockedCount?: number });
-  const [paidData, setPaidData] = useState<{ available: boolean; findings: Finding[]; prompts: Record<string, string>; copyDrafts: { status: string; headlines: string[]; subheadline: string; cta: string; faq: string; metaTitle: string; metaDescription: string } } | undefined>();
+  const params = useParams<{ id: string }>(); const searchParams = useSearchParams();
+  const id = params.id;
+  const paidPreview = id === "example" && searchParams.get("paidPreview") === "1";
+  const [scan, setScan] = useState(initial as FreeReport & { findings?: Finding[]; lockedTitles?: string[]; lockedCount?: number; paidRescansRemaining?: number | null });
+  const [paidData, setPaidData] = useState<{ available: boolean; findings: Finding[]; prompts: Record<string, string>; copyDrafts: { status: string; headlines: string[]; subheadline: string; cta: string; faq: string; metaTitle: string; metaDescription: string } } | undefined>(() => paidPreview ? examplePaidData() : undefined);
   const [paidStatus, setPaidStatus] = useState("");
   const [tool, setTool] = useState("Cursor"); const [copyStatus, setCopyStatus] = useState(""); const [shareStatus, setShareStatus] = useState(""); const [emailStatus, setEmailStatus] = useState("");
   const [checkoutPending, setCheckoutPending] = useState(false); const [checkoutMessage, setCheckoutMessage] = useState(""); const [checkoutSection, setCheckoutSection] = useState("");
   const [accessStatus, setAccessStatus] = useState("");
   const [notifyStatus, setNotifyStatus] = useState("");
   const [animatedScore, setAnimatedScore] = useState<number | null>(null);
-  const params = useParams<{ id: string }>(); const searchParams = useSearchParams();
-  const id = params.id;
   const checkoutAvailable = Boolean(scan.checkoutAvailable && !scan.paidRescanAvailable);
   useEffect(() => {
     if (scan.id === "example" || ["queued", "scanning"].includes(scan.status)) return;
@@ -124,7 +136,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     if (!prompt) return;
     const url = URL.createObjectURL(new Blob([prompt], { type: "text/plain;charset=utf-8" }));
     const link = document.createElement("a");
-    link.href = url; link.download = `verdkt-${tool.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-fix-prompt.txt`;
+    link.href = url; link.download = `ready-for-real-${tool.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-launch-prompt.txt`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -186,6 +198,13 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     confirmed: recommendationFindings.filter((finding) => findingResult(finding) === "Confirmed issue").length,
     review: recommendationFindings.filter((finding) => findingResult(finding) !== "Confirmed issue").length,
   };
+  const confirmedFindings = recommendationFindings.filter((finding) => findingResult(finding) === "Confirmed issue");
+  const launchCounts = {
+    critical: confirmedFindings.filter((finding) => finding.severity === "critical").length,
+    warnings: confirmedFindings.filter((finding) => finding.severity !== "critical").length,
+    passed: checkCounts.pass,
+    review: recommendationFindings.length - confirmedFindings.length,
+  };
   const visibleRecommendations = recommendationFindings.filter((finding) => recommendationFilter === "all" || (recommendationFilter === "confirmed" ? findingResult(finding) === "Confirmed issue" : findingResult(finding) !== "Confirmed issue"));
   const topRecommendations = visibleRecommendations.slice(0, 3);
   const remainingRecommendations = visibleRecommendations.slice(3);
@@ -196,6 +215,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   return <main className="report-page">
     <ScrollReveal selectors=".depth-section, .categories-section, .findings-section, .capture-section, .category-row, .check-evidence > div, .finding-glass-shell, .speed-insights > div" />
     <header className="wrap masthead"><Link className="brand" href="/" aria-label="Ready for Real home"><Image className="brand-icon" src="/r4r-logo.jpg" alt="" width={40} height={40} priority /><span className="brand-name">Ready for Real<span className="brand-dot">.</span></span><span className="brand-sub">Launch Readiness</span></Link><span className="mast-meta">{scan.domain ?? "PAGE REVIEW"}</span></header>
+    {paidPreview && <p className="wrap coverage-note"><strong>NO-CHARGE PAID-PAGE PREVIEW · HISTORICAL REGULARBASIS.STUDIO SCAN</strong><br/>Demo based on a scan from 31 October 2026. No real purchase or report access is changed.</p>}
     {!completed && scan.status !== "failed" && <section className="wrap scan-progress" aria-live="polite"><div className="scan-progress-ring" role="img" aria-label={`Scan step ${currentStep < 0 ? 0 : currentStep + 1} of ${scanSteps.length}`}><svg viewBox="0 0 72 72" aria-hidden="true"><circle className="progress-ring-track" cx="36" cy="36" r="31"/><circle className="progress-ring-value" cx="36" cy="36" r="31" strokeDasharray="195 195" strokeDashoffset={195 * (1 - (currentStep + 1) / scanSteps.length)}/></svg><span className="mono">{currentStep < 0 ? 0 : currentStep + 1}<small>/{scanSteps.length}</small></span></div><h1>{scan.phase}</h1><p>Rendering the live page and checking the details we can verify.</p><ol className="progress-log">{scanSteps.map((phase, index) => <li className={`${index < currentStep ? "done" : ""} ${index === currentStep ? "active" : ""} mono`} key={phase}>{index === currentStep && <span className="live-dot" aria-hidden="true"/>}{phase}</li>)}</ol></section>}
     {scan.status === "failed" && <section className="wrap scan-progress scan-failed"><span className="mono progress-label">SCAN STOPPED</span><h1>This page could not be reviewed.</h1><p>{scan.error ?? "The page could not be reached. Check the URL and try again."}</p><ScanForm initialUrl={scan.url} submitLabel="Retry scan" /><Link className="text-link" href="/">Try a different page →</Link></section>}
     {completed && <>
@@ -204,10 +224,17 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         <h1 className="report-heading">Launch page audit</h1>
         <div className="report-summary-grid">
         <GlassCard className="score-overview" shellClassName="report-score-shell" glow={false}>
-          <div className="summary-score-head"><span className="mono">VERDKT SCORE</span><span className="summary-complete-state"><i aria-hidden="true"/> Scan completed</span></div>
+          <div className="summary-score-head"><span className="mono">READY FOR REAL SCORE</span><span className="summary-complete-state"><i aria-hidden="true"/> Scan completed</span></div>
           <div className="score-line" role="img" aria-label={typeof scan.score === "number" ? `${PRODUCT_NAME}: ${scan.score} out of 100` : `${PRODUCT_NAME} score unavailable`}><span className="score-number" aria-hidden="true">{scoreDisplay(animatedScore ?? scan.score)}</span>{typeof scan.score === "number" && <span className="score-denom" aria-hidden="true">/100</span>}</div>
           <p className="coverage-note score-coverage">{partial ? "Some checks could not be confirmed; this score reflects the recorded evidence." : "This score summarizes recorded checks across seven launch-page categories."} Unknown checks do not add points.</p>
           <p className="scan-counts-line">{reportCounts.checksRun} checks with a pass/fail result · {reportCounts.passed} passed · {reportCounts.issues} flagged · {checkCounts.review} need review</p>
+          <div className="launch-readiness-summary" aria-label="Launch readiness summary">
+            <h2>Are you ready to launch?</h2>
+            <div className="launch-readiness-counts">
+              <span><strong>{launchCounts.critical}</strong> critical</span><span><strong>{launchCounts.warnings}</strong> warnings</span><span><strong>{launchCounts.passed}</strong> checks passed</span><span><strong>{launchCounts.review}</strong> need review</span>
+            </div>
+            <p>The three highest-priority findings are listed below. Review the evidence before changing your page.</p>
+          </div>
           <details className="summary-scan-details"><summary>Scan details and coverage</summary><div><p>{reportCounts.checksRun} checks with a pass/fail result · {checkCounts.review} need review · {checkCounts.unknown} unknown · {checkCounts.not_recorded} not recorded · {checkCounts.not_applicable} not applicable · {checkCounts.measured} informational.</p><p>“Not recorded” means the scan did not capture that configured check. “Unknown” means it attempted the check but could not confirm a result. A measured value is informational and does not imply a pass.</p><p>HTTP response: {scan.checks?.status?.value ?? "Unavailable"} · Redirects: {scan.checks?.redirects?.value ?? "Unavailable"}</p></div></details>
           {searchParams.get("checkout") === "complete" && <p className="inline-status" role="status">Your checkout returned to this report. Once the payment is verified, we’ll email a secure purchaser link for the full report.</p>}
           {searchParams.get("checkout") === "cancelled" && <p className="inline-status" role="status">Checkout was cancelled. Your free report is still available here.</p>}
@@ -222,8 +249,8 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         <div className="recommendation-tabs" role="group" aria-label="Filter recommendations">
           {([ ["all", "All findings", recommendationFindings.length], ["confirmed", "Confirmed", recommendationCounts.confirmed], ["review", "Needs review", recommendationCounts.review] ] as const).map(([filter, label, count]) => <button type="button" key={filter} className={recommendationFilter === filter ? "is-active" : ""} aria-pressed={recommendationFilter === filter} onClick={() => setRecommendationFilter(filter)}>{label}<span>{count}</span></button>)}
         </div>
-        <div className="finding-list top-recommendation-list">{topRecommendations.map((item, index) => <ReportFinding key={item.id} finding={item} index={index} evidenceAvailable={Boolean(captureLink(item))} evidenceHref={captureLink(item)}/>)}</div>
-        {remainingRecommendations.length > 0 && <details className="all-findings"><summary>All findings <span>{remainingRecommendations.length} more</span></summary><div className="finding-list">{remainingRecommendations.map((item, index) => <ReportFinding key={item.id} finding={item} index={index + 3} compact evidenceAvailable={Boolean(captureLink(item))} evidenceHref={captureLink(item)}/>)}</div></details>}
+        <div className="finding-list top-recommendation-list">{topRecommendations.map((item, index) => <ReportFinding key={item.id} finding={item} index={index} scoringVersion={scan.scoringVersion} evidenceAvailable={Boolean(captureLink(item))} evidenceHref={captureLink(item)}/>)}</div>
+        {remainingRecommendations.length > 0 && <details className="all-findings"><summary>All findings <span>{remainingRecommendations.length} more</span></summary><div className="finding-list">{remainingRecommendations.map((item, index) => <ReportFinding key={item.id} finding={item} index={index + 3} scoringVersion={scan.scoringVersion} compact evidenceAvailable={Boolean(captureLink(item))} evidenceHref={captureLink(item)}/>)}</div></details>}
         {!paidData && recommendationFindings.length > 3 && <p className="coverage-note all-findings-note">All {recommendationFindings.length} findings and their recorded evidence are shown here. The full report adds tailored fixes and tool-specific prompts.</p>}
       </section>}
       <section className="wrap capture-section" id="page-evidence" aria-label="Rendered page previews">
@@ -236,13 +263,13 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
       </section>
       <section className="wrap depth-section supplementary-checks" aria-label="Additional recorded evidence"><ReportOtherChecks rows={checkLedger}/></section>
       <TechnicalReportSections scan={scan} onRetryLighthouse={retryLighthouse}/>
-      <section className="wrap depth-section scoring-methodology" aria-labelledby="methodology-title"><div className="report-section-title"><h2 id="methodology-title">Scoring methodology.</h2><span className="mono">DETERMINISTIC · SCORING VERSION {scan.scoringVersion ?? "UNKNOWN"}</span></div><p className="coverage-note">Category weights: {categoryOrder.map((key) => `${labels[key]} ${CATEGORY_WEIGHTS[key]}%`).join(" · ")}. Each category starts from its recorded assessment and loses configured rule points per finding (critical −22, high −13, medium −7, low −3). Unknown checks remain unknown; scoring rules and weights are unchanged.</p>{scan.scoreBreakdown && <details className="score-breakdown"><summary>View exact category score inputs</summary><div className="breakdown-grid score-aggregation-grid"><div><p className="mono breakdown-label">SCORE · BASE · CEILING · DEDUCTIONS</p>{categoryOrder.map((key) => { const entry = scan.scoreBreakdown?.categories[key]; if (!entry) return null; return <div className="breakdown-row" key={key}><span className="mono">{labels[key]}</span><strong className="mono">{entry.score}/100 · base {entry.base} · ceiling {entry.ceiling} · −{entry.lost} pts / {entry.count} finding{entry.count === 1 ? "" : "s"}</strong></div>; })}</div></div></details>}</section>
+      <section className="wrap depth-section scoring-methodology" aria-labelledby="methodology-title"><div className="report-section-title"><h2 id="methodology-title">Scoring methodology.</h2><span className="mono">DETERMINISTIC · SCORING VERSION {scan.scoringVersion ?? "UNKNOWN"}</span></div><p className="coverage-note">Category weights: {categoryOrder.map((key) => `${labels[key]} ${CATEGORY_WEIGHTS[key]}%`).join(" · ")}. {scan.scoringVersion !== undefined && scan.scoringVersion >= 4 ? "Confirmed findings apply configured rule points (critical −22, high −13, medium −7, low −3). Findings that need review or are unknown do not reduce the score." : "This saved report keeps the score recorded under its original scoring rules; it has not been recalculated."} Historical reports retain their recorded scores.</p>{scan.scoreBreakdown && <details className="score-breakdown"><summary>View exact category score inputs</summary><div className="breakdown-grid score-aggregation-grid"><div><p className="mono breakdown-label">SCORE · BASE · CEILING · DEDUCTIONS</p>{categoryOrder.map((key) => { const entry = scan.scoreBreakdown?.categories[key]; if (!entry) return null; return <div className="breakdown-row" key={key}><span className="mono">{labels[key]}</span><strong className="mono">{entry.score}/100 · base {entry.base} · ceiling {entry.ceiling} · −{entry.lost} pts / {entry.count} recorded finding{entry.count === 1 ? "" : "s"}</strong></div>; })}</div></div></details>}</section>
       <section className="wrap use-report" id="use-report" aria-labelledby="use-report-title"><div className="use-report-heading"><div><span className="mono">NEXT STEPS</span><h2 id="use-report-title">Use your report.</h2></div><p>Continue with the recorded fixes, or save and share this audit.</p></div>
       {scan.id !== "example" && !paidData && <section className="wrap report-unlock-offer" id="unlock" aria-label="Unlock the launch plan and full report">
         <div>
           <p className="mono report-unlock-label">PERSONALIZED LAUNCH PLAN + FULL AGENT PROMPT · ${PRICE_FIX_PROMPT_USD} · ONE-TIME</p>
           <p>Get every finding in priority order, a checklist for launch and owner checks, page-copy drafts, and one complete prompt for your coding agent.</p>
-          <p className="mono report-unlock-note">ONE URL · UNLIMITED RE-SCANS FOR SEVEN DAYS · NO SUBSCRIPTION · CURSOR, CLAUDE CODE, CODEX &amp; MORE</p>
+          <p className="mono report-unlock-note">ONE URL · TWO FRESH RE-SCANS IN SEVEN DAYS · NO SUBSCRIPTION · CURSOR, CLAUDE CODE, CODEX &amp; MORE</p>
         </div>
         <div className="report-unlock-action">
           {checkoutAvailable ? <button className="inline-unlock" type="button" onClick={() => void checkout("report")} disabled={checkoutPending}>{checkoutPending && checkoutSection === "report" ? "Opening checkout…" : `Unlock full report — $${PRICE_FIX_PROMPT_USD}`}</button>
@@ -251,7 +278,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
           {notifyStatus && <p className="inline-status" role="status">{notifyStatus}</p>}
         </div>
       </section>}
-      {paidData && <section className="wrap paid-report paid-primary-continuation"><div className="report-section-title"><h2>Your launch plan.</h2><span className="mono">PERSONALIZED · UNLOCKED</span></div>{scan.paidRescanAvailable && <p className="mono paid-rescan-note">Your purchase includes unlimited re-scans of this URL for seven days. <Link href={`/?url=${encodeURIComponent(scan.url)}`}>Rescan this URL →</Link></p>}<LaunchPlan scanId={scan.id} findings={paidData.findings} /><div className="report-copy"><span className="mono">PAGE COPY OPTIONS</span><p>{paidData.copyDrafts.status}</p><div className="copy-drafts"><div><span className="mono">HEADLINE OPTIONS</span>{paidData.copyDrafts.headlines.map((line, i) => <p key={i}>{line}</p>)}</div><div><span className="mono">SUBHEADLINE</span><p>{paidData.copyDrafts.subheadline}</p></div><div><span className="mono">PRIMARY CTA</span><p>{paidData.copyDrafts.cta}</p></div><div><span className="mono">FAQ DRAFT</span><p>{paidData.copyDrafts.faq}</p></div><div><span className="mono">META TITLE & DESCRIPTION</span><p>{paidData.copyDrafts.metaTitle}</p><p>{paidData.copyDrafts.metaDescription}</p></div></div></div><h2 className="prompt-section-heading">Take the full plan to your coding agent.</h2><p className="coverage-note prompt-section-copy">Each tool version includes the full evidence-led launch plan, owner checks, acceptance criteria, and verification instructions.</p><div className="tool-tabs" role="tablist" aria-label="Fix prompt by tool" onKeyDown={(event) => {
+      {paidData && <section className="wrap paid-report paid-primary-continuation"><div className="report-section-title"><h2>Your launch plan.</h2><span className="mono">PERSONALIZED · UNLOCKED</span></div>{scan.paidRescanAvailable && <p className="mono paid-rescan-note">{scan.paidRescansRemaining === null ? "Your existing purchase includes unlimited" : `${scan.paidRescansRemaining ?? 0} included`} re-scan{scan.paidRescansRemaining === 1 ? "" : "s"} of this URL within seven days of purchase. Re-scan after applying fixes to check what changed. <Link href={`/?url=${encodeURIComponent(scan.url)}`}>Re-scan this URL →</Link></p>}<LaunchPlan scanId={scan.id} findings={paidData.findings} /><div className="report-copy"><span className="mono">PAGE COPY OPTIONS</span><p>{paidData.copyDrafts.status}</p><div className="copy-drafts"><div><span className="mono">HEADLINE OPTIONS</span>{paidData.copyDrafts.headlines.map((line, i) => <p key={i}>{line}</p>)}</div><div><span className="mono">SUBHEADLINE</span><p>{paidData.copyDrafts.subheadline}</p></div><div><span className="mono">PRIMARY CTA</span><p>{paidData.copyDrafts.cta}</p></div><div><span className="mono">FAQ DRAFT</span><p>{paidData.copyDrafts.faq}</p></div><div><span className="mono">META TITLE & DESCRIPTION</span><p>{paidData.copyDrafts.metaTitle}</p><p>{paidData.copyDrafts.metaDescription}</p></div></div></div><h2 className="prompt-section-heading">Take the full plan to your coding agent.</h2><p className="coverage-note prompt-section-copy">Each tool version includes the full evidence-led launch plan, owner checks, acceptance criteria, and verification instructions.</p><div className="tool-tabs" role="tablist" aria-label="Fix prompt by tool" onKeyDown={(event) => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
         const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")];
@@ -260,6 +287,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         const selected = tabs[next];
         if (selected?.dataset.tool) { setTool(selected.dataset.tool); selected.focus(); }
       }}>{Object.keys(paidData.prompts).map((name) => <button type="button" role="tab" id={toolId(name)} data-tool={name} aria-controls="prompt-content" tabIndex={tool === name ? 0 : -1} aria-selected={tool === name} className={tool === name ? "active" : ""} onClick={() => setTool(name)} key={name}>{name}</button>)}</div><pre className="prompt-output" id="prompt-content" role="tabpanel" aria-labelledby={toolId(tool)} tabIndex={0}>{prompt}</pre><div className="prompt-actions"><button className="primary-action" onClick={copyPrompt}>Copy {tool} prompt</button><button className="secondary-action" onClick={downloadPrompt}>Download prompt</button></div><span role="status">{copyStatus}</span></section>}
+      {paidPreview && paidData && <section className="wrap report-copy"><span className="mono">EXAMPLE PURCHASE EMAIL · PLAIN TEXT</span><p><strong>Subject:</strong> Ready for Real: your verified report</p><p>Your one-time Ready for Real report is ready. Open the secure purchaser link: [personal secure link]</p><p>Your purchase includes two additional re-scans of this exact URL within seven days. Each re-scan checks the current page again.</p><p>This link grants access to the paid report. Do not forward it.</p></section>}
       <ReportArtifactActions report={scan} paidData={paidData} />
       <div className="wrap share-row"><span className="mono">SHARE YOUR SCORE</span><button type="button" onClick={() => openShare("x")}>X</button><button type="button" onClick={() => openShare("linkedin")}>LinkedIn</button><button type="button" onClick={copyLink}>Copy link</button><span role="status">{shareStatus}</span></div>
       {paidStatus && <section className="wrap paid-report"><p className="mono inline-status" role="status">{paidStatus}</p></section>}

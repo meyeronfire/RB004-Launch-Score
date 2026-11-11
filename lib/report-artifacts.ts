@@ -2,6 +2,7 @@ import { CATEGORY_CHECKS } from "../config/scoring";
 import { checkOutcome } from "./audit-counts";
 import { SEVERITY_PENALTY } from "./score";
 import { formatLaunchPlanMarkdown } from "./launch-plan";
+import { findingResult } from "./finding-result";
 import type { AiCrawlerReport, Category, Finding, LinkedPageAudit, MetricCheck, PaidPayload, ScoreBreakdown } from "./types";
 
 export type PublicAuditFinding = Omit<Finding, "fix">;
@@ -49,14 +50,19 @@ function humanize(key: string) {
 }
 function clean(value: string | number | undefined) { return value === undefined ? "" : String(value).replace(/[\r\n]+/g, " ").trim(); }
 function markdownText(value: string) { return value.replace(/([\\`*_{}\[\]<>])/g, "\\$1").replace(/\r?\n/g, " "); }
-function safeFindings(findings: Finding[] | PublicAuditFinding[], paid: boolean) {
+function safeFindings(findings: Finding[] | PublicAuditFinding[], paid: boolean, scoringVersion?: number) {
   const priorities = { critical: "P1", high: "P2", medium: "P3", low: "P4" } as const;
-  return findings.map((finding) => ({
+  return findings.map((finding) => {
+    const result = findingResult(finding);
+    const confidence = result === "Needs review" ? finding.confidence === "unknown" ? "unknown" : "review" : "confirmed";
+    const currentUnscoredReview = scoringVersion !== undefined && scoringVersion >= 4 && confidence !== "confirmed";
+    return {
     id: finding.id, code: finding.code, category: finding.category, section: finding.section ?? "other", severity: finding.severity,
-    priority: priorities[finding.severity], lostRulePoints: SEVERITY_PENALTY[finding.severity],
+    confidence, priority: priorities[finding.severity], lostRulePoints: currentUnscoredReview ? 0 : SEVERITY_PENALTY[finding.severity],
     title: finding.title, why_it_matters: finding.why_it_matters, evidence: finding.evidence,
     ...(paid && "fix" in finding ? { fix: finding.fix } : {}),
-  }));
+    };
+  });
 }
 
 export function getCheckLedger(checks: Record<string, MetricCheck> = {}, findings: Finding[] | PublicAuditFinding[] = []): CheckLedgerRow[] {
@@ -103,7 +109,7 @@ export function getCategoryCoverage(checks: Record<string, MetricCheck> = {}, fi
 }
 
 export function createReportArtifacts(report: PublicAuditReport, paid?: PaidAuditArtifacts) {
-  const findings = paid ? safeFindings(paid.findings, true) : safeFindings(report.findings ?? [], false);
+  const findings = paid ? safeFindings(paid.findings, true, report.scoringVersion) : safeFindings(report.findings ?? [], false, report.scoringVersion);
   const checks = getCheckLedger(report.checks, report.findings);
   const checkCounts = checks.reduce<Record<CheckStatus, number>>((counts, row) => { counts[row.status] += 1; return counts; }, { pass: 0, issue: 0, review: 0, unknown: 0, not_recorded: 0, not_applicable: 0, measured: 0 });
   const categoryCheckStats = getCategoryCheckStats(report.checks, report.findings, report.categoryScores);
@@ -123,6 +129,7 @@ export function createReportArtifacts(report: PublicAuditReport, paid?: PaidAudi
   const findingLines = findings.length ? findings.map((finding, index) => [
     `### ${index + 1}. ${markdownText(finding.title)}`,
     `- Severity: ${finding.severity}${finding.code ? ` · ${finding.code}` : ""}`,
+    `- Evidence status: ${finding.confidence}`,
     `- Category: ${categoryLabels[finding.category] ?? humanize(finding.category)}`,
     `- Priority: ${finding.priority} · Lost rule points: −${finding.lostRulePoints}`,
     `- Why it matters: ${markdownText(finding.why_it_matters)}`,
@@ -147,7 +154,7 @@ export function createReportArtifacts(report: PublicAuditReport, paid?: PaidAudi
     return `- ${markdownText(page.path)} · ${page.state === "checked" ? `HTTP ${page.status ?? "unknown"}` : "unknown"} · ${markdownText(signals)}`;
   }).join("\n") : "No linked-page sample was recorded.";
   const markdown = [
-    `# ${markdownText(report.title || report.domain || "Launch Score audit")}`,
+    `# ${markdownText(report.title || report.domain || "Ready for Real report")}`,
     `- Score: **${score}**`, `- URL: ${markdownText(report.url)}`, `- Status: ${markdownText(report.status)}`, `- Scoring version: ${report.scoringVersion ?? "unknown"}`,
     report.createdAt ? `- Scanned: ${markdownText(report.createdAt)}` : "",
     report.auditCounts ? `- Audited checks: ${report.auditCounts.checksRun} · ${report.auditCounts.passed} passed · ${report.auditCounts.issues} issues` : "",
@@ -163,7 +170,7 @@ export function createReportArtifacts(report: PublicAuditReport, paid?: PaidAudi
     "## Full coding-agent prompts", promptBlock,
   ].filter(Boolean).join("\n\n");
   const quickSummary = [
-    `${report.title || report.domain || "Launch Score audit"} — ${score}`,
+    `${report.title || report.domain || "Ready for Real report"} — ${score}`,
     `${report.auditCounts?.checksRun ?? checks.length} checks · ${report.auditCounts?.passed ?? checkCounts.pass} passed · ${report.auditCounts?.issues ?? checkCounts.issue} issues`,
     ...findings.slice(0, 3).map((finding) => `- ${finding.severity.toUpperCase()}: ${finding.title}`),
   ].join("\n");

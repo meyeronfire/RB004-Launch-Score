@@ -3,9 +3,12 @@ import type Stripe from "stripe";
 import StripeSdk from "stripe";
 import { PRICE_FIX_PROMPT_USD, PRODUCT_NAME, RELEASE_CODE, SITE_URL } from "../config/release";
 import { database, readScan } from "./store";
+import { PAID_RESCAN_COOKIE } from "./free-tier";
 
 export const stripeClient = () => process.env.STRIPE_SECRET_KEY ? new StripeSdk(process.env.STRIPE_SECRET_KEY) : undefined;
 export const ACCESS_COOKIE = "rb004_access_";
+export const PAID_RESCAN_LIMIT = 2;
+export const PURCHASE_ACCESS_COOKIE = "rb004_purchase_access";
 export function hashAccessToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
 function tokenEncryptionKey() {
   const raw = process.env.REPORT_TOKEN_ENCRYPTION_KEY;
@@ -25,11 +28,17 @@ export function decryptClaimToken(value: string, key: Buffer) {
   decipher.setAuthTag(buffer.subarray(12, 28));
   return Buffer.concat([decipher.update(buffer.subarray(28)), decipher.final()]).toString("utf8");
 }
-export function readAccessCookie(cookieHeader: string | null, scanId: string) {
+export function readAccessCookies(cookieHeader: string | null, scanId: string) {
   const name = `${ACCESS_COOKIE}${scanId}`;
-  const pair = cookieHeader?.split(";").map((item) => item.trim()).find((item) => item.startsWith(`${name}=`));
-  if (!pair) return undefined;
-  try { return decodeURIComponent(pair.slice(name.length + 1)); } catch { return undefined; }
+  const pairs = cookieHeader?.split(";").map((item) => item.trim()) ?? [];
+  return [`${name}=`, `${PAID_RESCAN_COOKIE}=`, `${PURCHASE_ACCESS_COOKIE}=`].flatMap((prefix) => {
+    const pair = pairs.find((item) => item.startsWith(prefix));
+    if (!pair) return [];
+    try { return [decodeURIComponent(pair.slice(pair.indexOf("=") + 1))]; } catch { return []; }
+  }).filter((token, index, tokens) => Boolean(token) && tokens.indexOf(token) === index);
+}
+export function readAccessCookie(cookieHeader: string | null, scanId: string) {
+  return readAccessCookies(cookieHeader, scanId)[0];
 }
 export function validatePaidSession(session: Stripe.Checkout.Session, scanId: string) {
   const priceId = process.env.STRIPE_PRICE_ID?.trim();
@@ -114,8 +123,8 @@ export async function activatePurchase(event: Stripe.Event, session: Stripe.Chec
       VALUES (${hashAccessToken(claimToken)},${scanId},${session.id},NULL) ON CONFLICT (stripe_session_id) DO NOTHING`;
     const rescanToken = randomBytes(32).toString("base64url");
     const paidScan = await tx<{ url: string }[]>`SELECT url FROM scans WHERE id=${scanId} LIMIT 1`;
-    const rescanAccess = paidScan[0] ? await tx<{ expires_at: Date }[]>`INSERT INTO paid_url_access (token_hash,token_ciphertext,scan_id,stripe_session_id,normalized_url,recipient,expires_at)
-      VALUES (${hashAccessToken(rescanToken)},${encryptClaimToken(rescanToken,encryptionKey)},${scanId},${session.id},${paidScan[0].url},${email.toLowerCase()},now()+interval '7 days') ON CONFLICT (token_hash) DO UPDATE SET token_hash=EXCLUDED.token_hash RETURNING expires_at` : [];
+    const rescanAccess = paidScan[0] ? await tx<{ expires_at: Date }[]>`INSERT INTO paid_url_access (token_hash,token_ciphertext,scan_id,stripe_session_id,normalized_url,recipient,expires_at,rescans_limit)
+      VALUES (${hashAccessToken(rescanToken)},${encryptClaimToken(rescanToken,encryptionKey)},${scanId},${session.id},${paidScan[0].url},${email.toLowerCase()},now()+interval '7 days',${PAID_RESCAN_LIMIT}) ON CONFLICT (token_hash) DO UPDATE SET token_hash=EXCLUDED.token_hash RETURNING expires_at` : [];
     if (rescanAccess[0]) {
       const paidRescanExpiresAt = rescanAccess[0].expires_at.toISOString();
       await tx`UPDATE scans SET is_paid=true,payload=jsonb_set(payload,'{paidRescanExpiresAt}',to_jsonb(${paidRescanExpiresAt}::text),true) WHERE id=${scanId}`;
@@ -176,10 +185,10 @@ export async function deliverClaimEmail() {
       if (!purchase.length || !current.length) return;
       const token = decryptClaimToken(job.token_ciphertext, tokenEncryptionKey());
       const base = SITE_URL.replace(/\/$/, "");
-      const rescanRows = await tx<{ token_ciphertext: string }[]>`SELECT token_ciphertext FROM paid_url_access WHERE scan_id=${job.scan_id} AND stripe_session_id=${job.stripe_session_id} AND recipient=${job.recipient} AND expires_at>now() ORDER BY created_at DESC LIMIT 1`;
+      const rescanRows = await tx<{ token_ciphertext: string; rescans_limit: number | null }[]>`SELECT token_ciphertext,rescans_limit FROM paid_url_access WHERE scan_id=${job.scan_id} AND stripe_session_id=${job.stripe_session_id} AND recipient=${job.recipient} AND expires_at>now() ORDER BY created_at DESC LIMIT 1`;
       const rescanToken = rescanRows[0] ? decryptClaimToken(rescanRows[0].token_ciphertext, tokenEncryptionKey()) : "";
       const claimUrl = `${base}/api/scans/${encodeURIComponent(job.scan_id)}/claim?token=${encodeURIComponent(token)}${rescanToken ? `&rescan=${encodeURIComponent(rescanToken)}` : ""}`;
-      const rescanText = rescanToken ? "Your purchase also includes unlimited re-scans of this exact URL for seven days." : "";
+      const rescanText = !rescanToken ? "" : rescanRows[0].rescans_limit === null ? "Your purchase includes unlimited re-scans of this exact URL for seven days." : "Your purchase includes two additional re-scans of this exact URL within seven days. Each re-scan checks the current page again.";
       const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json", "Idempotency-Key": `report-${hashAccessToken(job.token_ciphertext)}` }, signal: AbortSignal.timeout(8000), body: JSON.stringify({ from: process.env.RESEND_FROM_EMAIL, to: [job.recipient], subject: `${PRODUCT_NAME}: your verified report`, text: `Your one-time ${PRODUCT_NAME} report is ready. Open the secure purchaser link: ${claimUrl}\n\n${rescanText}\n\nThis link grants access to the paid report. Do not forward it.` }) });
       if (!response.ok) throw new Error(`Resend returned HTTP ${response.status}`);
       await tx`UPDATE report_email_outbox SET status='sent',sent_at=now(),token_ciphertext='',locked_at=NULL WHERE stripe_session_id=${job.stripe_session_id}`;
@@ -216,7 +225,10 @@ async function authorizedPaidScan(scanId: string, token: string) {
   const sql = database(); if (!sql) return undefined;
   const tokenHash = hashAccessToken(token);
   const rows = await sql<{ token_hash: string }[]>`SELECT t.token_hash FROM checkout_access_tokens t JOIN purchases p ON p.stripe_session_id=t.stripe_session_id WHERE t.scan_id=${scanId} AND p.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>now()) AND t.token_hash=${tokenHash}
-    UNION ALL SELECT a.token_hash FROM paid_url_access a JOIN purchases p ON p.stripe_session_id=a.stripe_session_id AND p.revoked_at IS NULL JOIN scans s ON s.id=${scanId} AND a.normalized_url=s.url WHERE a.token_hash=${tokenHash} AND a.expires_at>now() LIMIT 1`;
+    UNION ALL SELECT t.token_hash FROM paid_rescan_reports r JOIN purchases p ON p.stripe_session_id=r.stripe_session_id AND p.revoked_at IS NULL JOIN checkout_access_tokens t ON t.stripe_session_id=r.stripe_session_id WHERE r.scan_id=${scanId} AND t.token_hash=${tokenHash}
+    UNION ALL SELECT a.token_hash FROM paid_rescan_reports r JOIN paid_url_access a ON a.stripe_session_id=r.stripe_session_id JOIN purchases p ON p.stripe_session_id=r.stripe_session_id AND p.revoked_at IS NULL WHERE r.scan_id=${scanId} AND a.token_hash=${tokenHash}
+    UNION ALL SELECT a.token_hash FROM paid_url_access a JOIN purchases p ON p.stripe_session_id=a.stripe_session_id AND p.revoked_at IS NULL JOIN scans s ON s.id=${scanId} AND s.is_paid AND a.normalized_url=s.url WHERE a.token_hash=${tokenHash} AND a.created_at<=s.created_at AND a.expires_at>s.created_at AND a.expires_at>now() AND s.payload->>'paidRescanSessionId' IS NULL AND NOT EXISTS (SELECT 1 FROM paid_url_access original WHERE original.scan_id=s.id) AND 1=(SELECT count(*) FROM paid_url_access historical_access WHERE historical_access.normalized_url=s.url AND historical_access.created_at<=s.created_at AND historical_access.expires_at>s.created_at)
+    UNION ALL SELECT a.token_hash FROM paid_url_access a JOIN purchases p ON p.stripe_session_id=a.stripe_session_id AND p.revoked_at IS NULL JOIN scans s ON s.id=${scanId} AND s.is_paid AND a.normalized_url=s.url WHERE a.token_hash=${tokenHash} AND a.expires_at>now() AND s.payload->>'paidRescanExpiresAt' IS NOT NULL AND abs(extract(epoch FROM (a.expires_at-(s.payload->>'paidRescanExpiresAt')::timestamptz)))<0.0011 AND 1=(SELECT count(*) FROM paid_url_access marked WHERE marked.normalized_url=s.url AND abs(extract(epoch FROM (marked.expires_at-(s.payload->>'paidRescanExpiresAt')::timestamptz)))<0.0011) LIMIT 1`;
   if (!rows[0]) return undefined;
   const expected = Buffer.from(rows[0].token_hash); const actual = Buffer.from(tokenHash);
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return undefined;
@@ -253,7 +265,26 @@ export async function verifyClaimToken(scanId: string, token: string) {
 export async function verifyPaidRescanToken(token: string, scanId?: string, normalizedUrl?: string) {
   const sql = database(); if (!sql) return undefined;
   const tokenHash = hashAccessToken(token);
-  const rows = await sql<{ scan_id: string; normalized_url: string; expires_at: Date }[]>`SELECT a.scan_id,a.normalized_url,a.expires_at FROM paid_url_access a JOIN purchases p ON p.stripe_session_id=a.stripe_session_id AND p.revoked_at IS NULL WHERE a.token_hash=${tokenHash} AND a.expires_at>now() LIMIT 1`;
+  const rows = await sql<{ scan_id: string; stripe_session_id: string; normalized_url: string; expires_at: Date; rescans_used: number; rescans_limit: number | null }[]>`SELECT a.scan_id,a.stripe_session_id,a.normalized_url,a.expires_at,a.rescans_used,a.rescans_limit FROM paid_url_access a JOIN purchases p ON p.stripe_session_id=a.stripe_session_id AND p.revoked_at IS NULL WHERE a.token_hash=${tokenHash} AND a.expires_at>now() LIMIT 1`;
   if (!rows[0] || (scanId && rows[0].scan_id !== scanId) || (normalizedUrl && rows[0].normalized_url !== normalizedUrl)) return undefined;
-  return rows[0];
+  return { ...rows[0], entitlementTokenHash: tokenHash, rescansRemaining: rows[0].rescans_limit === null ? null : Math.max(0, rows[0].rescans_limit - rows[0].rescans_used) };
+}
+
+export async function consumePaidRescan(token: string, normalizedUrl: string) {
+  const sql = database(); if (!sql) return undefined;
+  const tokenHash = hashAccessToken(token);
+  const rows = await sql<{ scan_id: string; stripe_session_id: string; normalized_url: string; expires_at: Date; rescans_used: number; rescans_limit: number | null }[]>`UPDATE paid_url_access a
+    SET rescans_used=a.rescans_used+1
+    FROM purchases p
+    WHERE a.stripe_session_id=p.stripe_session_id AND p.revoked_at IS NULL AND a.token_hash=${tokenHash}
+      AND a.normalized_url=${normalizedUrl} AND a.expires_at>now() AND (a.rescans_limit IS NULL OR a.rescans_used<a.rescans_limit)
+    RETURNING a.scan_id,a.stripe_session_id,a.normalized_url,a.expires_at,a.rescans_used,a.rescans_limit`;
+  const row = rows[0];
+  return row ? { ...row, entitlementTokenHash: tokenHash, rescansRemaining: row.rescans_limit === null ? null : Math.max(0, row.rescans_limit - row.rescans_used) } : undefined;
+}
+
+export async function releasePaidRescan(token: string) {
+  const sql = database(); if (!sql) return;
+  const tokenHash = hashAccessToken(token);
+  await sql`UPDATE paid_url_access SET rescans_used=GREATEST(0,rescans_used-1) WHERE token_hash=${tokenHash}`;
 }

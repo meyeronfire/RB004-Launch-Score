@@ -41,6 +41,12 @@ async function snapshotFromSavedHtml(html: string) {
 }
 
 describe("saved rendered-page fixtures", () => {
+  it("ignores an aria-hidden honeypot when checking user-facing form labels", async () => {
+    const snapshot = await snapshotFromSavedHtml(`<!doctype html><html><head><title>Form fixture</title></head><body><h1>Join</h1><form><label for="email">Email</label><input id="email" name="email" type="email"><label for="empty"></label><input id="empty" name="empty"><input class="scan-honeypot" name="website" aria-hidden="true" tabindex="-1"></form></body></html>`);
+    expect(snapshot.forms).toHaveLength(1);
+    expect(snapshot.forms[0]).toMatchObject({ fields: 2, unlabeledFields: 1 });
+  });
+
   it.each(pages)("extracts DOM signals safely from %s", async (name) => {
     const html = await readFile(path.join(process.cwd(), "tests/fixtures/pages", name), "utf8");
     const snapshot = await snapshotFromSavedHtml(html);

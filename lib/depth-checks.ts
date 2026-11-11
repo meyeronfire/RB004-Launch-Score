@@ -21,9 +21,23 @@ const headerValue = (headers: HeaderMap, name: string) => {
 
 export function inspectSecurityHeaders(headers: HeaderMap) {
   const csp = headerValue(headers, "content-security-policy");
+  const cspDirectives = new Map(csp.split(";").map((part) => part.trim()).filter(Boolean).map((part) => {
+    const [name, ...values] = part.split(/\s+/);
+    return [name.toLowerCase(), values.map((value) => value.toLowerCase())] as const;
+  }));
+  const weakCspReasons = ["default-src", "script-src"].flatMap((directive) => {
+    const values = cspDirectives.get(directive) ?? [];
+    const reasons: string[] = [];
+    if (values.includes("*")) reasons.push(`${directive} allows every source`);
+    if (directive === "script-src" && values.includes("'unsafe-eval'")) reasons.push("script-src allows unsafe-eval");
+    return reasons;
+  });
+  const effectiveScriptSources = cspDirectives.get("script-src") ?? cspDirectives.get("default-src") ?? [];
+  if (effectiveScriptSources.includes("'unsafe-inline'") && !effectiveScriptSources.some((value) => /^'(?:nonce-|sha(?:256|384|512)-)/.test(value))) weakCspReasons.push("the effective script policy allows unsafe-inline without a nonce or hash");
+  const cspState = !csp ? "Missing" : weakCspReasons.length ? "Weak" : "Present";
   const xFrame = headerValue(headers, "x-frame-options");
   const checks: Record<string, MetricCheck> = {
-    contentSecurityPolicy: csp ? { state: "checked", value: "Present" } : { state: "checked", value: "Missing" },
+    contentSecurityPolicy: { state: "checked", value: cspState },
     strictTransportSecurity: /(?:^|;)\s*max-age\s*=\s*[1-9]\d*/i.test(headerValue(headers, "strict-transport-security")) ? { state: "checked", value: "Present" } : { state: "checked", value: "Missing" },
     frameProtection: /(?:^|;)\s*frame-ancestors\b/i.test(csp) || /^(deny|sameorigin)$/i.test(xFrame.trim()) ? { state: "checked", value: "Present" } : { state: "checked", value: "Missing" },
     contentTypeOptions: /^nosniff$/i.test(headerValue(headers, "x-content-type-options").trim()) ? { state: "checked", value: "Present" } : { state: "checked", value: "Missing" },
@@ -39,6 +53,7 @@ export function inspectSecurityHeaders(headers: HeaderMap) {
     ["permissionsPolicy", "Permissions-Policy", "low", "Set a Permissions-Policy that disables browser features the site does not use."],
   ];
   const findings = definitions.flatMap(([key, name, severity, fix]) => checks[key].value === "Missing" ? [auditFinding("security", "security", severity, `Missing ${name} security header`, "Response headers help limit browser capabilities and reduce the impact of common web attacks.", `${name} was not present in the launch page response.`, fix)] : []);
+  if (cspState === "Weak") findings.push(auditFinding("security", "security", "high", "Content-Security-Policy allows weak script sources", "Wildcard sources, eval-enabled scripts, or inline scripts without a nonce or hash weaken a policy's protection against injected content.", `The response policy contains: ${weakCspReasons.join("; ")}.`, "Review the actual script and resource requirements, then remove wildcard sources, unsafe-eval, or unsafe-inline where possible. Use nonces or hashes for required inline scripts. Verify the effective response header after deployment."));
   return { checks, findings };
 }
 
@@ -214,11 +229,16 @@ export function formFindings(input: { forms: Array<{ action: string; method: str
   const findings: Finding[] = [];
   const unresolved = input.primaryCtas.filter((cta) => !cta.href || cta.href === "#" || (input.statusByUrl.has(cta.href) && (input.statusByUrl.get(cta.href) ?? 0) >= 400));
   if (unresolved.length) findings.push(auditFinding("forms", "conversion", "A primary CTA target is missing or unavailable", "The main action should take the visitor to a working next step.", `${unresolved.length} primary action${unresolved.length === 1 ? "" : "s"} did not have a confirmed working target.`, "Set the CTA href to a public destination that returns a successful response."));
-  for (const [index, form] of input.forms.entries()) {
-    if (!form.action && !form.handlerVisible) findings.push(auditFinding("forms", "conversion", "A form action could not be confirmed from markup", "A signup or contact form needs a working submission path before visitors enter information.", `Form ${index + 1} has no action attribute or declarative submit handler in its markup. It was not submitted; script-registered handlers cannot be confirmed by this passive check.`, "Confirm the form has a working submission handler. The scan does not submit forms."));
-    if (form.unlabeledFields) findings.push(auditFinding("forms", "conversion", "A form field is missing an accessible label", "A label helps screen-reader and keyboard users understand what to enter.", `Form ${index + 1} has ${form.unlabeledFields} unlabeled field${form.unlabeledFields === 1 ? "" : "s"}.`, "Associate a visible label with each input or provide an accessible name."));
-    if (form.invalidEmailInputs) findings.push(auditFinding("forms", "conversion", "A likely email field is not typed as email", "Email inputs provide suitable keyboards and basic format checking.", `Form ${index + 1} has ${form.invalidEmailInputs} email-like field${form.invalidEmailInputs === 1 ? "" : "s"} with a different input type.`, 'Use <input type="email"> for email-address fields.'));
-  }
+  const affectedForms = (predicate: (form: (typeof input.forms)[number]) => boolean) => input.forms.flatMap((form, index) => predicate(form) ? [index + 1] : []);
+  const describeForms = (indices: number[]) => indices.length === 1 ? `Form ${indices[0]}` : `Forms ${indices.slice(0, 4).join(", ")}${indices.length > 4 ? `, and ${indices.length - 4} more` : ""}`;
+  const withoutAction = affectedForms((form) => !form.action && !form.handlerVisible);
+  if (withoutAction.length) findings.push({ ...auditFinding("forms", "conversion", "A form action could not be confirmed from markup", "A signup or contact form needs a working submission path before visitors enter information.", `${describeForms(withoutAction)} have no explicit action attribute or declarative submit handler in their markup. Native forms may submit to the current page, and script-registered handlers cannot be confirmed by this passive check. The form was not submitted.`, "Review the form implementation and verify its submission path in a safe test environment; a missing action alone does not mean the form is broken."), confidence: "review" });
+  const unlabeledForms = input.forms.flatMap((form, index) => form.unlabeledFields ? [{ index: index + 1, count: form.unlabeledFields }] : []);
+  const unlabeledTotal = unlabeledForms.reduce((sum, form) => sum + form.count, 0);
+  if (unlabeledTotal) findings.push(auditFinding("forms", "conversion", "A form field is missing an accessible label", "A label helps screen-reader and keyboard users understand what to enter.", `${describeForms(unlabeledForms.map((form) => form.index))} have ${unlabeledTotal} unlabeled user-facing field${unlabeledTotal === 1 ? "" : "s"} in total.`, "Associate a visible label with each input or provide an accessible name."));
+  const invalidEmailForms = input.forms.flatMap((form, index) => form.invalidEmailInputs ? [{ index: index + 1, count: form.invalidEmailInputs }] : []);
+  const invalidEmailTotal = invalidEmailForms.reduce((sum, form) => sum + form.count, 0);
+  if (invalidEmailTotal) findings.push(auditFinding("forms", "conversion", "A likely email field is not typed as email", "Email inputs provide suitable keyboards and basic format checking.", `${describeForms(invalidEmailForms.map((form) => form.index))} have ${invalidEmailTotal} email-like field${invalidEmailTotal === 1 ? "" : "s"} with a different input type.`, 'Use <input type="email"> for email-address fields.'));
   return findings;
 }
 

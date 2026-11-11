@@ -30,6 +30,12 @@ describe("personalized launch plan", () => {
     expect(markdown).toContain("Confirm backups run and that someone has tested restoring them.");
     expect(prompt).toContain("Personalized launch plan");
     expect(prompt).toContain("owner-confirmation checklist is not scan evidence");
+    expect(prompt).toContain("**ISSUE**");
+    expect(prompt).toContain("**EVIDENCE**\nAffected URL: https://example.test\nReady for Real observed: No Content-Security-Policy response header was recorded.");
+    expect(prompt).toContain("**TASK**\nAdd a suitable policy and verify required assets still load.");
+    expect(prompt).toContain("**ACCEPTANCE CRITERIA**");
+    expect(prompt).toContain("## IMPLEMENTATION");
+    expect(prompt).toContain("## CONSTRAINTS AND VERIFICATION");
     expect(OWNER_LAUNCH_CHECKS).toHaveLength(7);
   });
 });

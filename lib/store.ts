@@ -17,11 +17,16 @@ function fileFor(id: string) { if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error(
 export async function saveScan(scan: ScanRecord, expectedLease?: string) {
   const sql = database();
   if (sql) {
-    const rows = await sql`INSERT INTO scans (id,url,status,phase,created_at,updated_at,payload,is_paid,content_hash,lease_token)
-      VALUES (${scan.id},${scan.url},${scan.status},${scan.phase},${scan.createdAt},${scan.updatedAt},${sql.json(scan)},${scan.paid ?? false},${scan.cacheKey ?? null},${scan.leaseToken ?? null})
-      ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status,phase=EXCLUDED.phase,updated_at=EXCLUDED.updated_at,payload=EXCLUDED.payload,is_paid=scans.is_paid OR EXCLUDED.is_paid,content_hash=COALESCE(EXCLUDED.content_hash,scans.content_hash)
-      WHERE scans.lease_token IS NOT DISTINCT FROM ${expectedLease ?? null} RETURNING id`;
-    if (!rows.length) throw new Error("Scan lease changed before this worker could save results.");
+    await sql.begin(async (tx) => {
+      const rows = await tx`INSERT INTO scans (id,url,status,phase,created_at,updated_at,payload,is_paid,content_hash,lease_token)
+        VALUES (${scan.id},${scan.url},${scan.status},${scan.phase},${scan.createdAt},${scan.updatedAt},${tx.json(scan)},${scan.paid ?? false},${scan.cacheKey ?? null},${scan.leaseToken ?? null})
+        ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status,phase=EXCLUDED.phase,updated_at=EXCLUDED.updated_at,payload=EXCLUDED.payload,is_paid=scans.is_paid OR EXCLUDED.is_paid,content_hash=COALESCE(EXCLUDED.content_hash,scans.content_hash)
+        WHERE scans.lease_token IS NOT DISTINCT FROM ${expectedLease ?? null} RETURNING id`;
+      if (!rows.length) throw new Error("Scan lease changed before this worker could save results.");
+      if (scan.status === "complete" && scan.paidRescanSessionId) {
+        await tx`INSERT INTO paid_rescan_reports (scan_id,stripe_session_id) VALUES (${scan.id},${scan.paidRescanSessionId}) ON CONFLICT (scan_id) DO NOTHING`;
+      }
+    });
   } else {
     await mkdir(scanDir, { recursive: true });
     const target = fileFor(scan.id); const temp = `${target}.${process.pid}.tmp`;
@@ -44,6 +49,26 @@ export async function updateScan(id: string, update: (current: ScanRecord) => Sc
   const current = await readScan(id); if (!current) return undefined;
   if (expectedLease !== undefined && current.leaseToken !== expectedLease) return undefined;
   const next = update(current); await saveScan(next, expectedLease); return next;
+}
+
+export async function failScanAndReleasePaidRescan(id: string, update: (current: ScanRecord) => ScanRecord, expectedLease?: string) {
+  const sql = database();
+  if (!sql) return updateScan(id, update, expectedLease);
+  return sql.begin(async (tx) => {
+    const rows = await tx<{ payload: ScanRecord; is_paid: boolean; lease_token: string | null }[]>`SELECT payload,is_paid,lease_token FROM scans WHERE id=${id} FOR UPDATE`;
+    const row = rows[0];
+    if (!row || row.lease_token !== (expectedLease ?? null)) return undefined;
+    const current = { ...row.payload, paid: row.is_paid, leaseToken: row.lease_token ?? undefined };
+    let next = update(current);
+    const tokenHash = current.paidRescanTokenHash;
+    if (next.status === "failed" && tokenHash && !current.paidRescanUseReleased) {
+      await tx`UPDATE paid_url_access SET rescans_used=GREATEST(0,rescans_used-1) WHERE token_hash=${tokenHash}`;
+      await tx`DELETE FROM paid_rescan_reports WHERE scan_id=${id}`;
+      next = { ...next, paidRescanUseReleased: true };
+    }
+    await tx`UPDATE scans SET status=${next.status},phase=${next.phase},updated_at=${next.updatedAt},payload=${tx.json(next)} WHERE id=${id}`;
+    return next;
+  });
 }
 
 export async function claimNextScan() {
@@ -108,7 +133,7 @@ export async function hasLiveWorker() {
 
 export function publicScan(scan: ScanRecord) {
   const safe = { ...scan };
-  delete safe.paidPayload; delete safe.leadEmail; delete safe.paid; delete safe.cacheKey; delete safe.leaseToken; delete safe.shareImageUrl; delete safe.paidRescanExpiresAt; delete safe.annotatedCapture;
+  delete safe.paidPayload; delete safe.leadEmail; delete safe.paid; delete safe.cacheKey; delete safe.leaseToken; delete safe.shareImageUrl; delete safe.paidRescanExpiresAt; delete safe.paidRescanTokenHash; delete safe.paidRescanSessionId; delete safe.paidRescanUseReleased; delete safe.annotatedCapture;
   const sections = ["design", "security", "seo", "leftovers", "forms", "technical", "other"] as const;
   const findingCounts = Object.fromEntries(sections.map((section) => {
     const items = (scan.findings ?? []).filter((item) => (item.section ?? "other") === section);

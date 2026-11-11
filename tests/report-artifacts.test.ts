@@ -78,6 +78,17 @@ describe("report audit artifacts", () => {
     }
   });
 
+  it("keeps review status aligned with UI while preserving historical deductions", () => {
+    const formFinding = { id: "forms-action", code: "FORM-01", category: "conversion" as const, section: "forms" as const, severity: "medium" as const, title: "A form action could not be confirmed from markup", why_it_matters: "The submission path needs checking.", evidence: "Form 1 has no explicit action attribute." };
+    const historical = createReportArtifacts({ ...report, findings: [formFinding] });
+    expect(historical.json).toContain('"confidence": "review"');
+    expect(historical.json).toContain('"lostRulePoints": 7');
+    expect(historical.markdown).toContain("Evidence status: review");
+    const current = createReportArtifacts({ ...report, scoringVersion: 4, findings: [formFinding] });
+    expect(current.json).toContain('"confidence": "review"');
+    expect(current.json).toContain('"lostRulePoints": 0');
+  });
+
   it("includes linked-page sample evidence in both exports", () => {
     const artifacts = createReportArtifacts({ ...report, linkedPages: [{ path: "/pricing", state: "checked", status: 200, title: "Plans", descriptionPresent: true, h1Count: 1, imageCount: 1, imagesMissingAlt: 0, noindex: false }] });
     expect(artifacts.markdown).toContain("## Linked pages sampled");

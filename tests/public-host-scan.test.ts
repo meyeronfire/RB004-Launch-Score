@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   freeStatus: vi.fn(),
   newOpaqueToken: vi.fn(),
   verifyPaidRescanToken: vi.fn(),
+  consumePaidRescan: vi.fn(),
+  releasePaidRescan: vi.fn(),
   enqueuePaidPrompt: vi.fn(),
 }));
 
@@ -21,7 +23,7 @@ vi.mock("@/lib/scanner", () => ({ createScan: mocks.createScan, ScanAdmissionErr
 vi.mock("@/lib/ssrf", () => ({ normalizePublicUrl: (value: string) => new URL(value), UnsafeTargetError: class UnsafeTargetError extends Error {} }));
 vi.mock("@/lib/store", () => ({ findCachedScan: mocks.findCachedScan, grantPaidCacheAccess: mocks.grantPaidCacheAccess, hasLiveWorker: mocks.hasLiveWorker }));
 vi.mock("@/lib/free-tier", () => ({ cookieValue: mocks.cookieValue, DEVICE_COOKIE: "rb004_device", deviceHash: mocks.deviceHash, FREE_SESSION_COOKIE: "rb004_free_session", newOpaqueToken: mocks.newOpaqueToken, freeStatus: mocks.freeStatus, PAID_RESCAN_COOKIE: "rb004_paid_rescan" }));
-vi.mock("@/lib/payments", () => ({ ACCESS_COOKIE: "rb004_access_", verifyPaidRescanToken: mocks.verifyPaidRescanToken }));
+vi.mock("@/lib/payments", () => ({ ACCESS_COOKIE: "rb004_access_", verifyPaidRescanToken: mocks.verifyPaidRescanToken, consumePaidRescan: mocks.consumePaidRescan, releasePaidRescan: mocks.releasePaidRescan }));
 vi.mock("@/lib/paid-prompt", () => ({ enqueuePaidPrompt: mocks.enqueuePaidPrompt }));
 
 import { POST } from "@/app/api/scans/route";
@@ -38,6 +40,7 @@ beforeEach(() => {
   mocks.deviceHash.mockReturnValue("device-hash");
   mocks.newOpaqueToken.mockReturnValue("device-token-123456789012345678901234");
   mocks.verifyPaidRescanToken.mockResolvedValue(undefined);
+  mocks.consumePaidRescan.mockResolvedValue(undefined);
   process.env.RB004_OWNER_SCAN_HOSTS = "rb004.vercel.app";
 });
 
@@ -70,5 +73,29 @@ describe("configured free-scan hosts", () => {
 
     expect(response.status).toBe(429);
     expect(mocks.createScan).not.toHaveBeenCalled();
+  });
+
+  it("starts a fresh scan when a valid paid re-scan entitlement is present, even with a cached result", async () => {
+    const expiresAt = "2026-11-16T12:00:00.000Z";
+    mocks.cookieValue.mockReturnValue("paid-rescan-token");
+    mocks.verifyPaidRescanToken.mockResolvedValue({ scan_id: "original-scan", normalized_url: "https://example.org/", expires_at: new Date(expiresAt), rescans_used: 0, rescansRemaining: 2 });
+    mocks.consumePaidRescan.mockResolvedValue({ scan_id: "original-scan", normalized_url: "https://example.org/", expires_at: new Date(expiresAt), rescans_used: 1, rescansRemaining: 1 });
+    mocks.findCachedScan.mockResolvedValue({ id: "recent-cached-scan", status: "complete" });
+
+    const response = await POST(new Request("https://rb004.vercel.app/api/scans", {
+      method: "POST",
+      headers: { "content-type": "application/json", "user-agent": "Mozilla/5.0", cookie: "rb004_paid_rescan=paid-rescan-token" },
+      body: JSON.stringify({ url: "https://example.org/" }),
+    }));
+
+    expect(response.status).toBe(202);
+    expect(mocks.findCachedScan).not.toHaveBeenCalled();
+    expect(mocks.consumePaidRescan).toHaveBeenCalledWith("paid-rescan-token", "https://example.org/");
+    expect(mocks.createScan).toHaveBeenCalledWith("https://example.org/", {
+      paid: true,
+      paidRescanExpiresAt: expiresAt,
+      freeAdmission: undefined,
+    });
+    expect(response.headers.get("set-cookie")).toContain("rb004_access_11111111-1111-4111-8111-111111111111=paid-rescan-token");
   });
 });

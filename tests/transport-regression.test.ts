@@ -22,7 +22,7 @@ afterEach(async () => { server.closeAllConnections(); await new Promise<void>((r
 describe("safe fetch response lifecycle", () => {
   it("rejects an actual truncated HTTP response instead of leaving the scan unsettled", async () => {
     reply = (response) => { response.writeHead(200, { "content-length": "100" }); response.write("partial"); setTimeout(() => response.destroy(), 10); };
-    await expect(safeFetch("http://8.8.8.8/", { timeoutMs: 80 })).rejects.toThrow(/before it was complete|aborted|reset/i);
+    await expect(safeFetch("http://8.8.8.8/", { timeoutMs: 1000 })).rejects.toThrow(/before it was complete|aborted|reset/i);
   });
   it("keeps the absolute deadline active after headers and a partial body arrive", async () => {
     reply = (response) => { response.writeHead(200, { "content-length": "100" }); response.write("partial"); };

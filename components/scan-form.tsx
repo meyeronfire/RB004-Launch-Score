@@ -14,20 +14,24 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
   const [emailLinkSent, setEmailLinkSent] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [paidRescan, setPaidRescan] = useState(false);
+  const [paidRescansRemaining, setPaidRescansRemaining] = useState<number | null>(0);
   const [ownerAccess, setOwnerAccess] = useState(false);
+  const [scanAvailable, setScanAvailable] = useState<boolean | null>(null);
   const [targetUrl, setTargetUrl] = useState(initialUrl);
   const router = useRouter();
   useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
       const query = targetUrl ? `?url=${encodeURIComponent(targetUrl)}` : "";
-      fetch(`/api/free-access${query}`, { cache: "no-store", signal: controller.signal }).then(async (response) => response.ok ? response.json() as Promise<{ remaining?: number | null; requiresEmail?: boolean; budgetPaused?: boolean; paidRescanAvailable?: boolean; hostAccess?: boolean }> : undefined).then((result) => {
+      fetch(`/api/free-access${query}`, { cache: "no-store", signal: controller.signal }).then(async (response) => response.ok ? response.json() as Promise<{ remaining?: number | null; requiresEmail?: boolean; budgetPaused?: boolean; paidRescanAvailable?: boolean; paidRescansRemaining?: number | null; hostAccess?: boolean; scanAvailable?: boolean }> : undefined).then((result) => {
         if (!result) return;
+        if (typeof result.scanAvailable === "boolean") setScanAvailable(result.scanAvailable);
         const hostTarget = Boolean(result.hostAccess);
         const hostEnabled = hostTarget && !Boolean(result.budgetPaused);
         const paid = Boolean(result.paidRescanAvailable);
         setOwnerAccess(hostEnabled);
         setPaidRescan(paid);
+        setPaidRescansRemaining(result.paidRescansRemaining === undefined ? 0 : result.paidRescansRemaining);
         if (hostTarget) {
           setRemaining(result.remaining ?? null);
           setNeedsEmail(false);
@@ -57,6 +61,7 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
         setEmailLinkSent(!waitlistMode);
         setNotice(waitlistMode ? "You’re on the waitlist. We’ll email when free scans return." : "Sign-in link sent. Open the email to unlock two more scans. The link expires in one hour."); setPending(false); return;
       }
+      if (scanAvailable === false) throw new Error("Scanning is temporarily unavailable. Please try again shortly.");
       const response = await fetch("/api/scans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, website: data.get("website") }) });
       const result = await response.json();
       if (!response.ok) {
@@ -78,7 +83,7 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     <label className="sr-only" htmlFor="scan-url">Page URL</label>
     <input id="scan-url" name="url" type="text" inputMode="url" autoComplete="url" placeholder="Paste your page URL" value={targetUrl} onChange={(event) => setTargetUrl(event.currentTarget.value)} required={!(needsEmail || waitlistMode)} aria-describedby="scan-error" />
     {!(needsEmail || waitlistMode) && <input className="scan-honeypot" name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" />}
-    <button type="submit" name="mode" value="scan" disabled={pending}>{pending ? "Starting…" : waitlistMode ? "Join waitlist" : submitLabel}</button>
+    <button type="submit" name="mode" value="scan" disabled={pending || scanAvailable === false}>{pending ? "Starting…" : waitlistMode ? "Join waitlist" : scanAvailable === false ? "Scan temporarily unavailable" : submitLabel}</button>
     {(needsEmail && !waitlistMode) && <>
       <label className="sr-only" htmlFor="scan-email">Email address</label>
       <input id="scan-email" className="free-email-input" name="email" type="email" autoComplete="email" placeholder="Your email" value={email} onChange={(event) => { setEmail(event.target.value); setNotice(""); setError(""); setEmailLinkSent(false); }} />
@@ -88,7 +93,9 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
     <span id="scan-error" className="sr-only" role="alert">{error}</span>
     {error && <span className="form-error" role="alert">{error}</span>}
     </form>
+    {scanAvailable === false && <p className="microcopy form-error" role="status">Scanning is temporarily unavailable. Please try again shortly.</p>}
     {(ownerAccess && !paidRescan) && <p className="microcopy free-scan-remaining">Free scanning enabled for this site</p>}
+    {paidRescan && <p className="microcopy free-scan-remaining">{paidRescansRemaining === null ? "Unlimited re-scans included for this purchase" : `${paidRescansRemaining} included re-scan${paidRescansRemaining === 1 ? "" : "s"} remaining`}</p>}
     {(remaining !== null && !needsEmail && !waitlistMode && !paidRescan && !ownerAccess) && <p className="microcopy free-scan-remaining">{remaining} free scan{remaining === 1 ? "" : "s"} left</p>}
     {(needsEmail || waitlistMode) && <p className="microcopy free-access-copy">{waitlistMode ? "Free scans are paused for today, back tomorrow." : emailLinkSent ? "Open the sign-in link we sent to your inbox to unlock two more free scans." : email.trim() ? "Click “Email me a link” to verify this address and unlock two more free scans." : "Add your email to unlock two more free scans. One free scan is available without an account."}</p>}
     {notice && <p className="microcopy free-access-notice" role="status">{notice}</p>}

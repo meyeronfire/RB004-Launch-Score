@@ -956,6 +956,13 @@ button, input { font: inherit; }
 .report-page .score-denom { color:#aaa; font-size:25px; }
 .report-page .score-overview .score-coverage { margin-top:22px; font-size:14px; }
 .report-page .scan-counts-line { margin:12px 0 0; color:#ddd; font-size:12px; line-height:1.5; }
+.report-page .launch-readiness-summary { margin-top:22px; padding-top:18px; border-top:1px solid #333; }
+.report-page .launch-readiness-summary h2 { margin:0 0 12px; color:#f5f5f5; font-size:16px; letter-spacing:-.02em; }
+.report-page .launch-readiness-counts { display:flex; flex-wrap:wrap; gap:8px 16px; color:#aaa; font:11px var(--mono); }
+.report-page .launch-readiness-counts span { white-space:nowrap; }
+.report-page .launch-readiness-counts strong { color:#fff; font-size:14px; margin-right:3px; }
+.report-page .launch-readiness-counts span:first-child strong { color:#ff2e7e; }
+.report-page .launch-readiness-summary p { margin:12px 0 0; color:#999; font-size:12px; line-height:1.5; }
 .report-page .linked-pages-section .report-section-title p { margin:8px 0 0; color:var(--ink-soft); font-size:14px; }
 .report-page .linked-pages-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .report-page .linked-page-row { min-width:0; padding:18px 20px; border:1px solid #333; border-radius:10px; background:#111; }

@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { imageSize } from "image-size";
 import { safeFetch, normalizePublicUrl, SafeFetchError, UnsafeTargetError, currentScanSignal, withScanSignal } from "./ssrf";
-import { makeFinding, rankFindings } from "./score";
-import { findCachedScan, readScan, saveScan, updateScan } from "./store";
+import { dedupeFindings, makeFinding, rankFindings } from "./score";
+import { failScanAndReleasePaidRescan, findCachedScan, readScan, saveScan, updateScan } from "./store";
 import type { Finding, MetricCheck, ScanRecord } from "./types";
 import { contentReviewCheck, reviewContent } from "./content-review";
 import { buildAiCrawlerReport } from "./ai-crawler-report";
@@ -107,10 +107,20 @@ export async function pageSnapshot(page: Page) {
     const headingOrderProblems: string[] = [];
     for (let index = 1; index < headings.length; index++) if (headings[index].level > headings[index - 1].level + 1) headingOrderProblems.push(`${headings[index - 1].text.slice(0, 50)} → ${headings[index].text.slice(0, 50)} skips a heading level`);
     const forms = [...document.forms].map((form) => {
-      const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input:not([type=hidden]),textarea,select")];
+      const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input:not([type=hidden]),textarea,select")].filter((field) => {
+        if (field.closest("[hidden],[inert],[aria-hidden='true' i],[role='presentation']")) return false;
+        const rect = field.getBoundingClientRect(); const style = getComputedStyle(field);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      });
       const emailInputs = fields.filter((field) => /email/i.test(`${field.getAttribute("name") || ""} ${field.getAttribute("placeholder") || ""} ${field.getAttribute("aria-label") || ""}`));
+      const hasAccessibleName = (field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => {
+        const labelledBy = field.getAttribute("aria-labelledby")?.trim().split(/\s+/).filter(Boolean) ?? [];
+        const referencedText = labelledBy.map((id) => document.getElementById(id)?.textContent?.trim() ?? "").filter(Boolean).join(" ");
+        const labelText = [...(field.labels ?? [])].some((label) => Boolean(label.textContent?.trim() || [...label.querySelectorAll("img[alt],svg title")].some((node) => (node instanceof HTMLImageElement ? node.alt : node.textContent)?.trim())));
+        return Boolean(labelText || field.getAttribute("aria-label")?.trim() || referencedText);
+      };
       return { action: form.getAttribute("action")?.trim() ?? "", method: (form.getAttribute("method") || "get").toLowerCase(), fields: fields.length,
-        unlabeledFields: fields.filter((field) => !field.labels?.length && !field.getAttribute("aria-label") && !field.getAttribute("aria-labelledby")).length,
+        unlabeledFields: fields.filter((field) => !hasAccessibleName(field)).length,
         emailInputs: emailInputs.length, invalidEmailInputs: emailInputs.filter((field) => field.type !== "email").length,
         handlerVisible: Boolean(form.getAttribute("onsubmit") || form.getAttribute("action")) };
     });
@@ -600,7 +610,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     checkResults.designReview = designReview.state === "checked"
       ? { state: "review", value: designReview.score ?? "Qualitative review completed", note: designReview.note ?? "Visual-review assessment" }
       : { state: "unknown", note: designReview.note ?? "Visual design review could not be completed." };
-    const allFindings = [...findings, ...designModelResult.findings, ...contentReview.findings.filter((item) => !findings.some((known) => known.id === item.id))];
+    const allFindings = dedupeFindings([...findings, ...designModelResult.findings, ...contentReview.findings]);
     const copyDrafts = contentReview.copyDrafts;
     const ranked = rankFindings(allFindings);
     const sectionCodes: Record<string, string> = { security: "SEC", seo: "SEO", leftovers: "LEFT", forms: "FORM", technical: "TECH", design: "DES", other: "GEN" };
@@ -621,7 +631,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     const paidPayload = { available: copyDrafts.headlines.length === 3, paidModelReady: Boolean(current.paid && copyDrafts.headlines.length === 3), findings: ranked, prompts, copyDrafts, model: scanModel };
     await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), scoreBreakdown: scored.scoreBreakdown,
       checks: checkResults, categoryCoverage: scored.categoryCoverage, aiCrawlerReport, lighthouse: { mobile: psi, desktop: psiDesktop, source: "via Google PageSpeed Insights" }, sharePreview: { title: snap.ogTitle || snap.title, description: snap.ogDescription || snap.description }, shareImageUrl,
-      desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 3, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
+      desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 4, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
       stackHints: hints, contentReview: contentReview.status, linkedPages, paidPayload }, leaseToken);
     await settleScanCost({ scanId: id, paid: Boolean(current.paid), browserMs, inputTokens: modelInputTokens, outputTokens: modelOutputTokens, model: scanModel });
     for (const script of scripts) script.source = "";
@@ -633,7 +643,7 @@ async function processScanCore(id: string, leaseToken?: string) {
       const diagnostic = error instanceof Error ? error as Error & { code?: string } : undefined;
       console.error("Launch Score scan failed", { scanId: id, errorName: diagnostic?.name ?? "UnknownError", errorCode: diagnostic?.code });
     }
-    await updateScan(id, (scan) => ({ ...scan, status: "failed", phase: "Scan could not be completed", error: message, updatedAt: now() }), leaseToken);
+    await failScanAndReleasePaidRescan(id, (scan) => ({ ...scan, status: "failed", phase: "Scan could not be completed", error: message, updatedAt: now() }), leaseToken);
     const failedScan = await readScan(id);
     await settleScanCost({ scanId: id, paid: Boolean(failedScan?.paid), browserMs, inputTokens: modelInputTokens, outputTokens: modelOutputTokens, model: scanModel || (failedScan?.paid ? process.env.LLM_MODEL_PAID : process.env.LLM_MODEL_FREE) || "gpt-4.1-mini" }).catch(() => undefined);
   } finally { lighthouseController?.abort(); running.delete(id); }
@@ -643,12 +653,12 @@ export class ScanAdmissionError extends Error {
   constructor(readonly code: "email_required" | "free_paused" | "free_limit", message: string) { super(message); this.name = "ScanAdmissionError"; }
 }
 
-export async function createScan(url: string, options: { paid?: boolean; paidRescanExpiresAt?: string; freeAdmission?: { device: string; ip: string; sessionToken?: string; skipIdentityLimits?: boolean } } = {}): Promise<ScanRecord> {
+export async function createScan(url: string, options: { paid?: boolean; paidRescanExpiresAt?: string; paidRescanTokenHash?: string; paidRescanSessionId?: string; freeAdmission?: { device: string; ip: string; sessionToken?: string; skipIdentityLimits?: boolean } } = {}): Promise<ScanRecord> {
   const target = normalizePublicUrl(url);
   const cached = options.paid ? undefined : await findCachedScan(target.toString());
   if (cached) return cached;
   const id = randomUUID(); const timestamp = now();
-  const record: ScanRecord = { id, url: target.toString(), status: "queued", phase: "In the scan queue…", createdAt: timestamp, updatedAt: timestamp, paid: Boolean(options.paid), paidRescanExpiresAt: options.paidRescanExpiresAt };
+  const record: ScanRecord = { id, url: target.toString(), status: "queued", phase: "In the scan queue…", createdAt: timestamp, updatedAt: timestamp, paid: Boolean(options.paid), paidRescanExpiresAt: options.paidRescanExpiresAt, paidRescanTokenHash: options.paidRescanTokenHash, paidRescanSessionId: options.paidRescanSessionId };
   if (!options.paid && options.freeAdmission) {
     const admission = await reserveFreeScan({ scanId: id, ...options.freeAdmission });
     if (!admission.allowed) {

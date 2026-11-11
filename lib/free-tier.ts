@@ -160,7 +160,7 @@ export async function requestFreeMagicLink(input: { email: string; device: strin
   try { const parsed = new URL(configuredOrigin || input.origin); if (process.env.NODE_ENV === "production" && parsed.protocol !== "https:") throw new Error("HTTPS origin required"); base = parsed.origin; }
   catch { await sql`DELETE FROM free_scan_magic_links WHERE token_hash=${tokenHash}`; return { ok: false as const, error: "Email sign-in is temporarily unavailable. Please try again later." }; }
   const link = `${base}/api/free-access/verify?token=${encodeURIComponent(token)}`;
-  const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" }, signal: AbortSignal.timeout(7000), body: JSON.stringify({ from: process.env.RESEND_FROM_EMAIL, to: [email], subject: "Your Launch Score sign-in link", text: `Use this link within one hour to unlock two more free scans: ${link}\n\nIf you did not request it, ignore this email.` }) });
+  const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" }, signal: AbortSignal.timeout(7000), body: JSON.stringify({ from: process.env.RESEND_FROM_EMAIL, to: [email], subject: "Your Ready for Real sign-in link", text: `Use this link within one hour to unlock two more free scans: ${link}\n\nIf you did not request it, ignore this email.` }) });
   if (!response.ok) { await sql`DELETE FROM free_scan_magic_links WHERE token_hash=${tokenHash}`; return { ok: false as const, error: "The sign-in email could not be sent. Please try again." }; }
   return { ok: true as const };
 }

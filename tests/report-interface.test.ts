@@ -94,13 +94,13 @@ describe("report presentation", () => {
     expect(renderToStaticMarkup(React.createElement(ReportFinding, { finding, index: 0, fix: finding.fix }))).toContain("PRIVATE_FIX_SENTINEL");
   });
 
-  it("labels passive form and trust heuristics for review without changing scoring", () => {
+  it("labels passive form and trust heuristics for review without deducting score", () => {
     const form = { ...finding, category: "conversion" as const, severity: "medium" as const,
       title: "A form action could not be confirmed from markup",
       evidence: "Form 1 has no action attribute. It was not submitted; script-registered handlers cannot be confirmed by this passive check." };
     expect(findingResult(form)).toBe("Needs review");
     expect(SEVERITY_PENALTY[form.severity]).toBe(7);
-    expect(scoreFindings([form], { conversion: 1 }).categoryScores.conversion).toBe(93);
+    expect(scoreFindings([form], { conversion: 1 }).categoryScores.conversion).toBe(100);
     // Unapplied proposal: eligibility must be separately approved/versioned.
     const hypotheticalEligible = [form].filter((item) => findingResult(item) === "Confirmed issue");
     expect(scoreFindings(hypotheticalEligible, { conversion: 1 }).categoryScores.conversion).toBe(100);

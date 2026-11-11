@@ -4,6 +4,8 @@ import { addFreeWaitlist, cookieValue, deviceHash, DEVICE_COOKIE, freeBudgetStat
 import { isOwnerScanTarget } from "@/lib/owner-scan-access";
 import { verifyPaidRescanToken } from "@/lib/payments";
 import { readBoundedBody } from "@/lib/http";
+import { normalizePublicUrl } from "@/lib/ssrf";
+import { findCachedScan, hasLiveWorker } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +25,17 @@ export async function GET(request: Request) {
   const requestedTarget = new URL(request.url).searchParams.get("url");
   let hostAccess = false;
   if (requestedTarget) { try { hostAccess = isOwnerScanTarget(new URL(requestedTarget)); } catch { /* Invalid targets are checked again when submitted. */ } }
+  let normalizedTarget: string | undefined;
+  if (requestedTarget) { try { normalizedTarget = normalizePublicUrl(requestedTarget).toString(); } catch { /* Invalid targets cannot use a paid re-scan entitlement. */ } }
   const paidToken = cookieValue(request, PAID_RESCAN_COOKIE);
-  const [status, budget, paidAccess] = await Promise.all([freeStatus({ device: client.hash, ip, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) }), freeBudgetStatus(), paidToken ? verifyPaidRescanToken(paidToken) : undefined]);
-  const response = Response.json({ ...status, ...(hostAccess ? { allowed: !budget.paused, remaining: budget.paused ? 0 : null, requiresEmail: false } : {}), budgetPaused: budget.paused, paidRescanAvailable: Boolean(paidAccess), hostAccess }, { headers: { "Cache-Control": "no-store" } });
+  const scanAvailability = process.env.NODE_ENV !== "production"
+    ? Promise.resolve(true)
+    : !process.env.DATABASE_URL
+      ? Promise.resolve(false)
+      : (async () => Boolean(normalizedTarget && await findCachedScan(normalizedTarget)) || await hasLiveWorker())();
+  const [status, budget, paidAccess, scanAvailable] = await Promise.all([freeStatus({ device: client.hash, ip, sessionToken: cookieValue(request, FREE_SESSION_COOKIE) }), freeBudgetStatus(), paidToken ? verifyPaidRescanToken(paidToken, undefined, normalizedTarget) : undefined, scanAvailability]);
+  const paidRescansRemaining = paidAccess ? paidAccess.rescansRemaining : 0;
+  const response = Response.json({ ...status, ...(hostAccess ? { allowed: !budget.paused, remaining: budget.paused ? 0 : null, requiresEmail: false } : {}), budgetPaused: budget.paused, paidRescanAvailable: paidRescansRemaining === null || paidRescansRemaining > 0, paidRescansRemaining, hostAccess, scanAvailable }, { headers: { "Cache-Control": "no-store" } });
   if (client.cookie) response.headers.append("Set-Cookie", client.cookie);
   return response;
 }

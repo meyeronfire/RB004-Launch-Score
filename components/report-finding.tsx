@@ -24,7 +24,7 @@ function nextStep(finding: Pick<Finding, "category" | "section" | "title" | "evi
   return "Recheck the recorded observation on the current page, then choose a targeted change only if the evidence is reproducible.";
 }
 
-export function ReportFinding({ finding, index, fix, compact = false, evidenceAvailable = false, evidenceHref = "#page-evidence" }: { finding: Pick<Finding, "id" | "code" | "category" | "section" | "severity" | "title" | "why_it_matters" | "evidence"> & Partial<Pick<Finding, "fix">>; index: number; fix?: string; compact?: boolean; evidenceAvailable?: boolean; evidenceHref?: string }) {
+export function ReportFinding({ finding, index, fix, scoringVersion, compact = false, evidenceAvailable = false, evidenceHref = "#page-evidence" }: { finding: Pick<Finding, "id" | "code" | "category" | "section" | "severity" | "title" | "why_it_matters" | "evidence"> & Partial<Pick<Finding, "fix">>; index: number; fix?: string; scoringVersion?: number; compact?: boolean; evidenceAvailable?: boolean; evidenceHref?: string }) {
   const category = categories[finding.category] ?? "Other";
   const result = findingResult(finding);
   return <article className={`report-finding${compact ? " report-finding--compact" : ""}`} style={{ "--category-accent": categoryAccent(finding.category) } as React.CSSProperties}>
@@ -33,6 +33,6 @@ export function ReportFinding({ finding, index, fix, compact = false, evidenceAv
     <p className="report-finding-observation"><strong>Observed</strong>{findingResult(finding) === "Needs review" && /form/i.test(`${finding.title} ${finding.evidence}`) ? "Form submission could not be verified from markup. " : ""}{finding.evidence}</p>
     {!compact && <p className="report-finding-next"><strong>Next step</strong>{fix ?? nextStep(finding)}</p>}
     {evidenceAvailable && <a className="finding-evidence-link" href={evidenceHref}>View captured page renders</a>}
-    <details className="report-finding-details"><summary>Show technical details &amp; scoring</summary><div><p><strong>Recorded evidence:</strong> {finding.evidence}</p><p><strong>Result:</strong> {findingResult(finding)}. This status describes the evidence recorded for the finding.</p><p><strong>Severity:</strong> {rank[finding.severity]}. The current scoring model applies its configured −{SEVERITY_PENALTY[finding.severity]} rule-point deduction independently of this presentation, including findings that need review.</p>{finding.code && <p><strong>Rule:</strong> <code>{finding.code}</code></p>}</div></details>
+    <details className="report-finding-details"><summary>Show technical details &amp; scoring</summary><div><p><strong>Recorded evidence:</strong> {finding.evidence}</p><p><strong>Result:</strong> {result}. This status describes the evidence recorded for the finding.</p><p><strong>Severity:</strong> {rank[finding.severity]}. {result === "Needs review" && scoringVersion !== undefined && scoringVersion >= 4 ? "No score deduction is applied until the observation is confirmed." : result === "Needs review" ? "This saved report may use an earlier scoring rule; its recorded score has not been recalculated." : `The scoring model applies its configured −${SEVERITY_PENALTY[finding.severity]} rule-point deduction.`}</p>{finding.code && <p><strong>Rule:</strong> <code>{finding.code}</code></p>}</div></details>
   </article>;
 }

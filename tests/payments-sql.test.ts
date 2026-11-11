@@ -14,7 +14,7 @@ vi.mock("../lib/store", () => ({
   },
 }));
 vi.mock("stripe", () => ({ default: class { prices = { retrieve: mocks.retrievePrice }; checkout = { sessions: { create: mocks.create } }; } }));
-import { activatePurchase, activateRefund, decryptClaimToken, deliverClaimEmail, getPaidReport, makeCheckout, requestClaimEmail, verifyClaimToken, verifyPaidRescanToken } from "../lib/payments";
+import { activatePurchase, activateRefund, consumePaidRescan, decryptClaimToken, deliverClaimEmail, getPaidReport, makeCheckout, readAccessCookie, readAccessCookies, requestClaimEmail, verifyClaimToken, verifyPaidRescanToken } from "../lib/payments";
 import { enqueuePaidPrompt } from "../lib/paid-prompt";
 
 const scanId = "11111111-1111-4111-8111-111111111111";
@@ -28,9 +28,9 @@ function paid(id: string, attemptId?: string, targetScanId = scanId) {
   return { id, metadata: { scanId: targetScanId, priceId: "price_test_launch_plan", releaseCode: "RB004", oneTime: "true", ...(attemptId ? { checkoutAttemptId: attemptId } : {}) }, client_reference_id: targetScanId, mode: "payment", payment_method_types: ["card"], currency: "usd", amount_total: 1200, payment_status: "paid", customer_details: { email: "buyer@example.test" }, payment_intent: `pi_${id}` } as unknown as Stripe.Checkout.Session;
 }
 const event = (id: string) => ({ id }) as Stripe.Event;
-async function issued(id: string) {
-  await db.query("INSERT INTO checkout_sessions (stripe_session_id,scan_id,expires_at) VALUES ($1,$2,now()+interval '1 hour')", [id, scanId]);
-  await activatePurchase(event(`evt_${id}`), paid(id));
+async function issued(id: string, targetScanId = scanId) {
+  await db.query("INSERT INTO checkout_sessions (stripe_session_id,scan_id,expires_at) VALUES ($1,$2,now()+interval '1 hour')", [id, targetScanId]);
+  await activatePurchase(event(`evt_${id}`), paid(id, undefined, targetScanId));
   const row = (await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM report_email_outbox WHERE stripe_session_id=$1", [id])).rows[0];
   return row ? decryptClaimToken(row.token_ciphertext, key) : undefined;
 }
@@ -40,6 +40,7 @@ beforeAll(async () => {
   db = new PGlite();
   await db.exec(await readFile("db/migrations/001_initial.sql", "utf8"));
   await db.exec(await readFile("db/migrations/002_free_tier_costs.sql", "utf8"));
+  await db.exec(await readFile("db/migrations/003_paid_rescan_limits.sql", "utf8"));
   await db.exec(await readFile("db/migrations/001_initial.sql", "utf8"));
   // PGlite is a single-connection PostgreSQL runtime. Transaction and row semantics are real;
   // advisory lock scheduling needs the separate hosted multi-connection acceptance check.
@@ -128,6 +129,106 @@ describe("paid report transactions on PostgreSQL", () => {
     expect(await getPaidReport(scanId, token)).toBeDefined();
     await requestClaimEmail(scanId, "attacker@example.test");
     expect(await getPaidReport(scanId, token)).toBeDefined();
+  });
+  it("allows exactly two fresh re-scans on the purchased URL", async () => {
+    await issued("cs_two_rescans");
+    const ciphertext = (await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_two_rescans'")).rows[0].token_ciphertext;
+    const rescanToken = decryptClaimToken(ciphertext, key);
+    const initially = await verifyPaidRescanToken(rescanToken, undefined, "https://example.test/");
+    expect(initially?.rescansRemaining).toBe(2);
+    expect((await consumePaidRescan(rescanToken, "https://example.test/"))?.rescansRemaining).toBe(1);
+    expect((await consumePaidRescan(rescanToken, "https://example.test/"))?.rescansRemaining).toBe(0);
+    expect(await consumePaidRescan(rescanToken, "https://example.test/")).toBeUndefined();
+    expect((await verifyPaidRescanToken(rescanToken))?.rescansRemaining).toBe(0);
+    expect(await consumePaidRescan(rescanToken, "https://another.test/")).toBeUndefined();
+  });
+  it("preserves the original unlimited re-scan terms for existing entitlements", async () => {
+    await issued("cs_legacy_unlimited");
+    const ciphertext = (await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_legacy_unlimited'")).rows[0].token_ciphertext;
+    const token = decryptClaimToken(ciphertext, key);
+    await db.exec("UPDATE paid_url_access SET rescans_limit=NULL WHERE stripe_session_id='cs_legacy_unlimited'");
+    expect((await verifyPaidRescanToken(token))?.rescansRemaining).toBeNull();
+    expect((await consumePaidRescan(token, "https://example.test/"))?.rescansRemaining).toBeNull();
+    expect((await consumePaidRescan(token, "https://example.test/"))?.rescansRemaining).toBeNull();
+    expect((await consumePaidRescan(token, "https://example.test/"))?.rescansRemaining).toBeNull();
+  });
+  it("keeps finished re-scan reports available through the purchase after the re-scan window", async () => {
+    const purchaseToken = (await issued("cs_persistent_rescan"))!;
+    const rescanCiphertext = (await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_persistent_rescan'")).rows[0].token_ciphertext;
+    const rescanToken = decryptClaimToken(rescanCiphertext, key);
+    const rescanId = "33333333-3333-4333-8333-333333333333";
+    const payload = { id: rescanId, url: "https://example.test/", status: "complete", paid: true, paidPayload: { available: true, paidModelReady: true, prompts: { Cursor: "fresh report" } } };
+    await db.query("INSERT INTO scans(id,url,status,phase,payload,is_paid) VALUES($1,$2,'complete','Ready',$3::jsonb,true)", [rescanId, payload.url, JSON.stringify(payload)]);
+    await db.query("INSERT INTO paid_rescan_reports(scan_id,stripe_session_id) VALUES($1,'cs_persistent_rescan')", [rescanId]);
+    await db.exec("UPDATE paid_url_access SET expires_at=now()-interval '1 day' WHERE stripe_session_id='cs_persistent_rescan'");
+    expect(readAccessCookie(`rb004_purchase_access=${encodeURIComponent(purchaseToken)}`, rescanId)).toBe(purchaseToken);
+    expect(readAccessCookies(`rb004_paid_rescan=${encodeURIComponent(rescanToken)}; rb004_purchase_access=${encodeURIComponent(purchaseToken)}`, rescanId)).toEqual([rescanToken, purchaseToken]);
+    expect(await getPaidReport(rescanId, purchaseToken)).toMatchObject({ prompts: { Cursor: "fresh report" } });
+    expect(await getPaidReport(rescanId, rescanToken)).toMatchObject({ prompts: { Cursor: "fresh report" } });
+  });
+  it("keeps same-URL re-scan reports private to the purchase that created them", async () => {
+    const buyerA = (await issued("cs_same_url_a"))!;
+    const buyerB = (await issued("cs_same_url_b"))!;
+    const rescanA = decryptClaimToken((await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_same_url_a'")).rows[0].token_ciphertext, key);
+    const rescanB = decryptClaimToken((await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_same_url_b'")).rows[0].token_ciphertext, key);
+    const rescanId = "55555555-5555-4555-8555-555555555555";
+    const payload = { id: rescanId, url: "https://example.test/", status: "complete", paid: true, paidRescanSessionId: "cs_same_url_b", paidPayload: { available: true, paidModelReady: true, prompts: { Cursor: "buyer B report" } } };
+    await db.query("INSERT INTO scans(id,url,status,phase,payload,is_paid) VALUES($1,$2,'complete','Ready',$3::jsonb,true)", [rescanId, payload.url, JSON.stringify(payload)]);
+    expect(await getPaidReport(rescanId, buyerA)).toBeUndefined();
+    expect(await getPaidReport(rescanId, rescanA)).toBeUndefined();
+    await db.query("INSERT INTO paid_rescan_reports(scan_id,stripe_session_id) VALUES($1,'cs_same_url_b')", [rescanId]);
+    expect(await getPaidReport(rescanId, buyerA)).toBeUndefined();
+    expect(await getPaidReport(rescanId, rescanA)).toBeUndefined();
+    expect(await getPaidReport(rescanId, buyerB)).toMatchObject({ prompts: { Cursor: "buyer B report" } });
+    expect(await getPaidReport(rescanId, rescanB)).toMatchObject({ prompts: { Cursor: "buyer B report" } });
+  });
+  it("preserves access to reports created before the re-scan access table existed, only during their original window", async () => {
+    const purchaseToken = (await issued("cs_pre_migration_rescan"))!;
+    const ciphertext = (await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_pre_migration_rescan'")).rows[0].token_ciphertext;
+    const rescanToken = decryptClaimToken(ciphertext, key);
+    const legacyId = "44444444-4444-4444-8444-444444444444";
+    const payload = { id: legacyId, url: "https://example.test/", status: "complete", paid: true, paidPayload: { available: true, paidModelReady: true, prompts: { Cursor: "legacy report" } } };
+    await db.query("INSERT INTO scans(id,url,status,phase,payload,is_paid) VALUES($1,$2,'complete','Ready',$3::jsonb,true)", [legacyId, payload.url, JSON.stringify(payload)]);
+    expect(await getPaidReport(legacyId, purchaseToken)).toBeUndefined();
+    expect(readAccessCookie(`rb004_purchase_access=${encodeURIComponent(purchaseToken)}; rb004_paid_rescan=${encodeURIComponent(rescanToken)}`, legacyId)).toBe(rescanToken);
+    expect(await getPaidReport(legacyId, rescanToken)).toMatchObject({ prompts: { Cursor: "legacy report" } });
+    const laterBuyer = (await issued("cs_pre_migration_later_buyer"))!;
+    const laterRescanCiphertext = (await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_pre_migration_later_buyer'")).rows[0].token_ciphertext;
+    const laterRescanToken = decryptClaimToken(laterRescanCiphertext, key);
+    expect(await getPaidReport(legacyId, rescanToken)).toMatchObject({ prompts: { Cursor: "legacy report" } });
+    expect(await getPaidReport(legacyId, laterBuyer)).toBeUndefined();
+    expect(await getPaidReport(legacyId, laterRescanToken)).toBeUndefined();
+    await db.exec("UPDATE paid_url_access SET expires_at=now()-interval '1 day' WHERE stripe_session_id='cs_pre_migration_rescan'");
+    expect(await getPaidReport(legacyId, purchaseToken)).toBeUndefined();
+    expect(await getPaidReport(legacyId, rescanToken)).toBeUndefined();
+  });
+  it("does not expose an unowned legacy re-scan report when multiple buyers share its URL", async () => {
+    const buyerA = (await issued("cs_legacy_collision_a"))!;
+    const buyerB = (await issued("cs_legacy_collision_b"))!;
+    const rescanA = decryptClaimToken((await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_legacy_collision_a'")).rows[0].token_ciphertext, key);
+    const legacyId = "66666666-6666-4666-8666-666666666666";
+    const payload = { id: legacyId, url: "https://example.test/", status: "complete", paid: true, paidPayload: { available: true, paidModelReady: true, prompts: { Cursor: "unowned legacy report" } } };
+    await db.query("INSERT INTO scans(id,url,status,phase,payload,is_paid) VALUES($1,$2,'complete','Ready',$3::jsonb,true)", [legacyId, payload.url, JSON.stringify(payload)]);
+    expect(await getPaidReport(legacyId, buyerA)).toBeUndefined();
+    expect(await getPaidReport(legacyId, buyerB)).toBeUndefined();
+    expect(await getPaidReport(legacyId, rescanA)).toBeUndefined();
+  });
+  it("keeps a pre-migration cached report with a matching paid-access marker tied to its buyer", async () => {
+    const legacyId = "77777777-7777-4777-8777-777777777777";
+    const payload = { id: legacyId, url: "https://example.test/", status: "complete", paid: true, paidPayload: { available: true, paidModelReady: true, prompts: { Cursor: "promoted cached report" } } };
+    await db.query("INSERT INTO scans(id,url,status,phase,payload,is_paid) VALUES($1,$2,'complete','Ready',$3::jsonb,true)", [legacyId, payload.url, JSON.stringify(payload)]);
+    const buyerToken = (await issued("cs_legacy_cached_promotion", legacyId))!;
+    const rescanRow = (await db.query<{ token_ciphertext: string; expires_at: Date }>("SELECT token_ciphertext,expires_at FROM paid_url_access WHERE stripe_session_id='cs_legacy_cached_promotion'")).rows[0];
+    const rescanToken = decryptClaimToken(rescanRow.token_ciphertext, key);
+    await db.exec(`UPDATE scans SET payload=jsonb_set(payload,'{paidRescanExpiresAt}',to_jsonb('${rescanRow.expires_at.toISOString()}'::text),true) WHERE id='${legacyId}'`);
+    expect(await getPaidReport(legacyId, rescanToken)).toMatchObject({ prompts: { Cursor: "promoted cached report" } });
+    const laterBuyer = (await issued("cs_legacy_cached_later_buyer"))!;
+    const laterRescanRow = (await db.query<{ token_ciphertext: string }>("SELECT token_ciphertext FROM paid_url_access WHERE stripe_session_id='cs_legacy_cached_later_buyer'")).rows[0];
+    const laterRescanToken = decryptClaimToken(laterRescanRow.token_ciphertext, key);
+    expect(await getPaidReport(legacyId, laterBuyer)).toBeUndefined();
+    expect(await getPaidReport(legacyId, laterRescanToken)).toBeUndefined();
+    expect(await getPaidReport(legacyId, rescanToken)).toMatchObject({ prompts: { Cursor: "promoted cached report" } });
+    expect(await getPaidReport(legacyId, buyerToken)).toMatchObject({ prompts: { Cursor: "promoted cached report" } });
   });
   it("revokes only the refunded purchase and cancels its claimed email job", async () => {
     const first = (await issued("cs_first"))!;

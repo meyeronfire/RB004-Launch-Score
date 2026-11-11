@@ -1,9 +1,10 @@
 import type { Finding } from "./types";
 
-type Evidence = Pick<Finding, "title" | "evidence" | "category">;
+type Evidence = Pick<Finding, "title" | "evidence" | "category"> & Partial<Pick<Finding, "confidence">>;
 
 /** Presentation state only. Existing severity, priority, and score remain unchanged. */
 export function findingResult(finding: Evidence): "Confirmed issue" | "Needs review" {
+  if (finding.confidence === "review" || finding.confidence === "unknown") return "Needs review";
   const title = finding.title.toLowerCase();
   const evidence = finding.evidence.toLowerCase();
   if (/form action could not be confirmed|form submission could not be verified/.test(title)) return "Needs review";

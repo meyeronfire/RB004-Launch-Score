@@ -19,17 +19,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const download = url.searchParams.get("download") === "1";
   const scan = id === "example" ? exampleReport : await readScan(id);
   if (!scan || scan.status !== "complete" || typeof scan.score !== "number") return new Response("Report not found", { status: 404 });
-  const [interDisplay, geistMono, wordmark] = await Promise.all([
+  const [interDisplay, geistMono, logo] = await Promise.all([
     readFile(path.join(process.cwd(), "public/fonts/inter-display-medium.ttf")),
     readFile(path.join(process.cwd(), "public/fonts/geist-mono.ttf")),
-    readFile(path.join(process.cwd(), "public/verdkt-wordmark.png")),
+    readFile(path.join(process.cwd(), "public/r4r-logo.jpg")),
   ]);
   const data = buildShareCardData(publicScan(scan));
-  const wordmarkSrc = `data:image/png;base64,${wordmark.toString("base64")}`;
+  const logoSrc = `data:image/jpeg;base64,${logo.toString("base64")}`;
   const { width, height } = SHARE_FORMATS[format];
-  return new ImageResponse(renderShareCard({ data, variant, width, height, wordmarkSrc }), {
+  return new ImageResponse(renderShareCard({ data, variant, width, height, logoSrc }), {
     width, height,
     fonts: [{ name: "Inter Display", data: interDisplay, style: "normal", weight: 500 }, { name: "Geist Mono", data: geistMono, style: "normal", weight: 400 }],
-    headers: download ? { "Content-Disposition": `attachment; filename="verdkt-${variant}-${format}.png"` } : undefined,
+    headers: download ? { "Content-Disposition": `attachment; filename="ready-for-real-${variant}-${format}.png"` } : undefined,
   });
 }
