@@ -17,7 +17,7 @@ import { getCheckLedger } from "../lib/report-artifacts";
 import { TechnicalReportSections } from "../components/technical-report-sections";
 import { CATEGORY_ACCENTS, categoryAccent } from "../lib/report-visuals";
 import { findingResult } from "../lib/finding-result";
-import { promptVariants, emptyDrafts } from "../lib/fix-prompts";
+import { findingFixPrompt, promptVariants, emptyDrafts } from "../lib/fix-prompts";
 import { SEVERITY_PENALTY, scoreFindings } from "../lib/score";
 
 const finding: Finding = {
@@ -110,6 +110,26 @@ describe("report presentation", () => {
     const prompt = promptVariants({ url: "https://example.test/", title: "Example", stack: [], findings: [form, finding], copyDrafts: emptyDrafts() }).Codex;
     expect(prompt.indexOf("Missing Content-Security-Policy")).toBeLessThan(prompt.indexOf("## Separate verification tasks"));
     expect(prompt).toContain("## Separate verification tasks\n1. A form action could not be confirmed");
+  });
+
+  it("builds a detailed paid prompt around one confirmed finding and its evidence", () => {
+    const prompt = findingFixPrompt({ url: "https://example.test/", title: "Example", finding });
+    expect(prompt).toContain("# Fix brief: Missing Content-Security-Policy security header");
+    expect(prompt).toContain("Check: SEC-01");
+    expect(prompt).toContain("Content-Security-Policy was not present in the launch page response.");
+    expect(prompt).toContain("PRIVATE_FIX_SENTINEL: configure the policy after reviewing integrations.");
+    expect(prompt).toContain("make the smallest safe, stack-appropriate change for this finding only");
+    expect(prompt).toContain("After deployment, rescan this URL in the same scope");
+  });
+
+  it("instructs a coding agent to verify review-state findings before changing code", () => {
+    const form = { ...finding, category: "conversion" as const, severity: "medium" as const,
+      title: "A form action could not be confirmed from markup",
+      evidence: "Form 1 has no action attribute. It was not submitted; script-registered handlers cannot be confirmed by this passive check." };
+    const prompt = findingFixPrompt({ url: "https://example.test/", title: "Example", finding: form });
+    expect(prompt).toContain("Evidence status: Needs review");
+    expect(prompt).toContain("Do not change code unless the concern is independently confirmed.");
+    expect(prompt).toContain("If it cannot be confirmed, explain why and leave the implementation unchanged.");
   });
 
   it("shows unavailable positive timings honestly and keeps robots policy separate", () => {

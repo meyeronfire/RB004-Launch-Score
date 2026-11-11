@@ -851,6 +851,26 @@ button, input { font: inherit; }
 .report-page .prompt-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:18px; }
 .report-page .prompt-actions button { min-height:48px; padding:0 18px; border-radius:8px; font:600 14px var(--display); cursor:pointer; }
 .report-page .prompt-actions .secondary-action { color:var(--ink); background:#181818; border:1px solid #555; }
+.report-page .paid-finding-prompts { margin:38px 0 48px; }
+.report-page .paid-finding-prompts > .report-section-title { align-items:flex-end; margin-bottom:16px; }
+.report-page .paid-finding-prompts > .report-section-title .mono { color:#aaa; font-size:10px; letter-spacing:.07em; }
+.report-page .paid-finding-prompts > .report-section-title p { max-width:70ch; margin:8px 0 0; color:#aaa; font-size:14px; line-height:1.55; }
+.report-page .paid-finding-prompt-list { border-top:1px solid #383838; }
+.report-page .paid-finding-prompt { border-bottom:1px solid #383838; }
+.report-page .paid-finding-prompt > summary { display:flex; min-height:74px; align-items:center; gap:16px; cursor:pointer; list-style:none; }
+.report-page .paid-finding-prompt > summary::-webkit-details-marker { display:none; }
+.report-page .paid-finding-prompt-number { color:var(--accent); font-size:12px; }
+.report-page .paid-finding-prompt-title { display:grid; min-width:0; gap:5px; }
+.report-page .paid-finding-prompt-title strong { color:#eee; font-size:15px; font-weight:560; }
+.report-page .paid-finding-prompt-title small { color:#999; font-size:11px; text-transform:capitalize; }
+.report-page .paid-finding-prompt-toggle { margin-left:auto; color:#ddd; font-size:12px; }
+.report-page .paid-finding-prompt-hide, .report-page .paid-finding-prompt[open] .paid-finding-prompt-show { display:none; }
+.report-page .paid-finding-prompt[open] .paid-finding-prompt-hide { display:inline; }
+.report-page .paid-finding-prompt-toggle::after { content:"⌄"; margin-left:8px; color:var(--accent); font-size:18px; }
+.report-page .paid-finding-prompt[open] .paid-finding-prompt-toggle::after { content:"⌃"; }
+.report-page .paid-finding-prompt-body { padding:0 0 24px 34px; }
+.report-page .paid-finding-prompt-body .prompt-output { max-height:460px; margin:0; }
+.report-page .paid-finding-prompt-body .prompt-actions { margin-top:12px; }
 .report-page .share-preview-card-single { display:flex; width:min(100%,780px); min-width:0; margin-inline:auto; padding:clamp(10px,2vw,18px); justify-content:center; overflow:visible; }
 .report-page .share-card-preview-image { width:min(100%,720px); min-width:0; max-width:100%; max-height:none; overflow:visible; }
 .report-page .share-card-preview-image img { display:block; width:100%; height:auto; max-width:100%; object-fit:contain; }
@@ -859,6 +879,13 @@ button, input { font: inherit; }
 .report-page .report-finding a { display:inline-flex; min-height:44px; align-items:center; }
 .report-page ::selection { color:#090909; background:#ff2e7e; }
 @media (max-width:720px) {
+  .report-page .paid-finding-prompts > .report-section-title { display:block; }
+  .report-page .paid-finding-prompts > .report-section-title > .mono { display:inline-block; margin-top:12px; }
+  .report-page .paid-finding-prompt > summary { min-height:80px; gap:10px; }
+  .report-page .paid-finding-prompt-title strong { font-size:13px; }
+  .report-page .paid-finding-prompt-toggle { font-size:0; white-space:nowrap; }
+  .report-page .paid-finding-prompt-body { padding-left:0; }
+  .report-page .paid-finding-prompt-body .prompt-actions button { width:100%; }
   .report-page .report-summary-grid { grid-template-columns:minmax(0,1fr); }
   .report-page .category-row summary { grid-template-columns:minmax(0,1fr) auto; gap:7px 12px; padding-block:14px; }
 .report-page .category-row-name { grid-column:1; grid-row:1; color:var(--accent); }
