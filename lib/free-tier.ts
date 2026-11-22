@@ -214,7 +214,7 @@ export async function adminMetrics() {
 
 export async function adminRecentScans() {
   const sql = database(); if (!sql) throw new Error("The reporting database is not configured.");
-  const rows = await sql<{ id: string; url: string; status: string; created_at: Date; score: number | null }[]>`SELECT id,url,status,created_at,(payload->>'score')::integer AS score
+  const rows = await sql<{ id: string; url: string; status: string; created_at: Date; score: number | null; error: string | null }[]>`SELECT id,url,status,created_at,(payload->>'score')::integer AS score, payload->>'error' AS error
     FROM scans ORDER BY created_at DESC LIMIT 10`;
   return rows.map((row) => ({ ...row }));
 }
