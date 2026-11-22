@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import type { AiCrawlerReport, LighthouseStrategy, LighthouseReport, LinkedPageAudit, MetricCheck } from "@/lib/types";
 import { GlassCard } from "@/components/glass-card";
-import { SHARE_FORMATS, type ShareFormat, type ShareVariant } from "@/lib/share-card";
+import { SHARE_CARD_VERSION, SHARE_FORMATS, type ShareFormat, type ShareVariant } from "@/lib/share-card";
 
 type ReportView = { id: string; url: string; finalUrl?: string; title?: string; description?: string; lighthouse?: LighthouseReport; aiCrawlerReport?: AiCrawlerReport; linkedPages?: LinkedPageAudit[]; sharePreview?: { title: string; description: string }; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; createdAt?: string };
 const strategies = [["performance", "Performance"], ["accessibility", "Accessibility"], ["bestPractices", "Best Practices"], ["seo", "SEO"]] as const;
@@ -118,11 +118,11 @@ export function ReportSharePreview({ scan }: { scan: Pick<ReportView, "id"> }) {
       </div>
       <div className="share-preview-card share-preview-card-single">
         <div className="share-card-preview-image" style={{ aspectRatio: `${SHARE_FORMATS[shareFormat].width} / ${SHARE_FORMATS[shareFormat].height}` }}>
-          <Image src={`/r/${encodeURIComponent(scan.id)}/share?variant=${shareVariant}&format=${shareFormat}`} alt={`Ready for Real ${shareVariant} card preview`} width={SHARE_FORMATS[shareFormat].width} height={SHARE_FORMATS[shareFormat].height} unoptimized />
+          <Image src={`/r/${encodeURIComponent(scan.id)}/share?variant=${shareVariant}&format=${shareFormat}&v=${SHARE_CARD_VERSION}`} alt={`Ready for Real ${shareVariant} card preview`} width={SHARE_FORMATS[shareFormat].width} height={SHARE_FORMATS[shareFormat].height} unoptimized />
         </div>
       </div>
       <div className="share-card-actions">
-        <a className="inline-unlock" href={`/r/${encodeURIComponent(scan.id)}/share?variant=${shareVariant}&format=${shareFormat}&download=1`} download={`ready-for-real-${shareVariant}-${shareFormat}.png`}>Download PNG</a>
+        <a className="inline-unlock" href={`/r/${encodeURIComponent(scan.id)}/share?variant=${shareVariant}&format=${shareFormat}&v=${SHARE_CARD_VERSION}&download=1`} download={`ready-for-real-${shareVariant}-${shareFormat}.png`}>Download PNG</a>
         <span className="mono">{SHARE_FORMATS[shareFormat].label} · {shareVariant === "score" ? "score card" : "findings card"}</span>
       </div>
     </section>
