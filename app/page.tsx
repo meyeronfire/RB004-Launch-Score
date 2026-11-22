@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
-import { RELEASE_CODE, PRODUCT_NAME, PRICE_FIX_PROMPT_USD } from "@/config/release";
+import { PRODUCT_NAME, PRICE_FIX_PROMPT_USD } from "@/config/release";
+import { SiteFooter } from "@/components/site-footer";
 import { ScanForm } from "@/components/scan-form";
 import { exampleReport } from "@/lib/example";
 import { HeroReportPreview } from "@/components/hero-report-preview";
@@ -93,6 +94,6 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         </div>
       </div>
     </section>
-    <footer className="wrap footer"><span>{RELEASE_CODE} — A Regular Basis release. Berlin.</span><nav className="footer-links" aria-label="Regular Basis releases"><a href="https://www.getklare.com/">RB001</a><a href="https://epkay.com/">RB002</a><a href="https://urtype.app/">RB003</a><a href="/terms">TERMS</a><a href="/privacy">PRIVACY</a><a href="/refund">REFUNDS</a><a href="https://regularbasis.studio">REGULAR BASIS</a></nav></footer>
+    <SiteFooter navLabel="Regular Basis releases"><a href="https://www.getklare.com/">RB001</a><a href="https://epkay.com/">RB002</a><a href="https://urtype.app/">RB003</a><a href="/terms">TERMS</a><a href="/privacy">PRIVACY</a><a href="/refund">REFUNDS</a><a href="https://regularbasis.studio">REGULAR BASIS</a></SiteFooter>
   </main>;
 }
