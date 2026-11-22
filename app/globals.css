@@ -103,6 +103,8 @@ button, input { font: inherit; }
 .admin-scan-table td { font-size: 14px; }
 .admin-scan-table a { text-decoration: underline; text-underline-offset: 3px; }
 .admin-scan-url { overflow-wrap: anywhere; }
+.admin-scan-status { display: grid; gap: 6px; min-width: 180px; }
+.admin-scan-reason { color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
 .admin-login { max-width: 520px; }
 .paid-rescan-note { margin: 20px 0 28px; color: var(--ink-soft); font-size: 11px; line-height: 1.7; }
 .paid-rescan-note a { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
