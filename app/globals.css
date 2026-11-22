@@ -143,10 +143,18 @@ button, input { font: inherit; }
 .faq-item:last-child { border-bottom: 1px solid rgba(255,255,255,.1); }
 .faq-item h3 { margin: 0 0 11px; font-size: clamp(19px, 2.1vw, 26px); letter-spacing: -.03em; font-weight: 520; }
 .faq-item p { margin: 0; max-width: 68ch; color: var(--ink-soft); }
-.footer { padding: 28px 0 38px; min-height: 100px; display: flex; justify-content: space-between; gap: 20px; align-items: center; color: var(--ink-faint); font: 11px var(--mono); }
+.footer { padding: 22px 0 36px; min-height: 100px; display: flex; flex-direction: column; align-items: stretch; gap: 16px; color: var(--ink-faint); font: 11px var(--mono); }
+.footer-bar { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
 .footer a { min-width: 44px; min-height: 44px; display: inline-flex; justify-content: center; align-items: center; text-decoration: none; }
 .footer-links { display: flex; gap: 22px; }
 .footer a:hover { color: var(--ink); }
+.featured-on { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.featured-on-label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink-faint); font: 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+.featured-on-label::before { content: ""; width: 16px; height: 1px; background: var(--accent); opacity: .9; }
+.featured-on-list { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; list-style: none; margin: 0; padding: 0; }
+.featured-on a { padding: 4px 2px; }
+.featured-on img { display: block; height: 32px; width: auto; opacity: .62; filter: grayscale(1); transition: opacity 180ms ease, filter 180ms ease; }
+.featured-on a:hover img, .featured-on a:focus-visible img { opacity: 1; filter: none; }
 .report-page .masthead { border-bottom: 1px solid rgba(255,255,255,.09); }
 .scan-progress { min-height: 70vh; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-block: 100px; }
 .scan-progress h1 { max-width: 18ch; font-size: clamp(42px, 7vw, 84px); letter-spacing: -.04em; line-height: .98; margin: 12px 0; font-weight: 540; }
@@ -452,7 +460,8 @@ button, input { font: inherit; }
   .example-score { font-size: clamp(130px, 45vw, 190px); margin-bottom: 34px; }
   .example-copy h3 { max-width: 17ch; }
   .pricing { grid-template-columns: 1fr; gap: 50px; }
-  .footer { align-items: flex-start; flex-direction: column; }
+  .footer, .footer-bar { align-items: flex-start; flex-direction: column; }
+  .footer-bar { gap: 4px; }
   .footer-links { flex-wrap: wrap; }
 }
 
