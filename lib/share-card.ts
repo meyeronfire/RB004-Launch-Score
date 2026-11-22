@@ -12,7 +12,7 @@ export const SHARE_FORMATS: Record<ShareFormat, { width: number; height: number;
 // Bump when the card artwork changes. Social apps cache og:image by URL, so the
 // version has to be part of the address Next advertises. updatedAt covers a
 // later rescore of the same report.
-export const SHARE_CARD_VERSION = "4";
+export const SHARE_CARD_VERSION = "5";
 
 export function shareCardImagePath(id: string, updatedAt?: string) {
   const stamp = updatedAt ? `${SHARE_CARD_VERSION}-${updatedAt}` : SHARE_CARD_VERSION;
