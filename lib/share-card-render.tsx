@@ -133,7 +133,7 @@ export function renderShareCard({ data, variant, width, height, logoSrc, chromeS
   } else {
     scorePanel = panel(<div style={{ display: "flex", flexDirection: "column", gap: 20, width: "100%" }}>
       {domainBlock}
-      {categories(data, 18, 8, 5)}
+      {categories(data, 20, 9, 5)}
     </div>, 28);
     body = <div style={{ display: "flex", flex: 1, width: "100%", flexDirection: "row", alignItems: "stretch", gap: 24 }}>
       <div style={{ display: "flex", flex: 1, flexDirection: "column", justifyContent: "center", gap: 14 }}>
@@ -145,7 +145,7 @@ export function renderShareCard({ data, variant, width, height, logoSrc, chromeS
         <div style={{ display: "flex", width: 360, marginTop: 6 }}>{bar(data.score, 8)}</div>
         <span style={{ display: "flex", fontFamily: MONO, fontSize: 15, color: PINK, letterSpacing: 2.2 }}>{data.statusLabel.toUpperCase()}</span>
       </div>
-      <div style={{ display: "flex", width: 568 }} />
+      <div style={{ display: "flex", width: 628 }} />
     </div>;
   }
 
@@ -162,7 +162,7 @@ export function renderShareCard({ data, variant, width, height, logoSrc, chromeS
     <div style={{ display: "flex", position: "absolute", left: 0, right: 0, bottom: 0, height: tall ? 180 : 110, background: "linear-gradient(180deg, rgba(0,0,0,0), #000 72%)" }} />
     <div style={{ display: "flex", position: "relative", width: "100%" }}>{header}</div>
     <div style={{ display: "flex", position: "relative", flex: 1, width: "100%" }}>{body}</div>
-    {scorePanel && <div style={{ display: "flex", position: "absolute", top: 112, right: pad, width: 568 }}>{scorePanel}</div>}
+    {scorePanel && <div style={{ display: "flex", position: "absolute", top: 101, right: pad, width: 628 }}>{scorePanel}</div>}
     <div style={{ display: "flex", position: "relative", width: "100%" }}>{footer}</div>
   </div>;
 }
