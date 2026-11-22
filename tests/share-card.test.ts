@@ -80,7 +80,7 @@ describe("share-card data", () => {
   it("versions the open graph image URL and refuses to cache the previous artwork", () => {
     const path = shareCardImagePath("5003bef3-2c69-4f79-93c6-fb62946144f2", "2026-11-22T14:35:59.000Z");
     expect(path).toBe(`/r/5003bef3-2c69-4f79-93c6-fb62946144f2/opengraph-image?v=${encodeURIComponent(`${SHARE_CARD_VERSION}-2026-11-22T14:35:59.000Z`)}`);
-    expect(path).toContain("v=2-");
+    expect(path).toContain(`v=${SHARE_CARD_VERSION}-`);
     expect(SHARE_CARD_CACHE_CONTROL).toContain("max-age=0");
     expect(SHARE_CARD_CACHE_CONTROL).toContain("must-revalidate");
   });

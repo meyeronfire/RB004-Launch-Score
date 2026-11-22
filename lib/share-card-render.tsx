@@ -116,7 +116,7 @@ export function renderShareCard({ data, variant, width, height, logoSrc, chromeS
   } else if (tall) {
     body = <div style={{ display: "flex", flex: 1, flexDirection: "column", justifyContent: "space-between", gap: 28 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <span style={{ display: "flex", fontFamily: MONO, fontSize: 15, color: PINK, letterSpacing: 2.4 }}>MY LAUNCH SCORED</span>
+        <span style={{ display: "flex", fontFamily: MONO, fontSize: 15, color: PINK, letterSpacing: 2.4 }}>LAUNCH SCORE</span>
         <div style={{ display: "flex", alignItems: "flex-start" }}>
           {chromeText(data.score ?? "—", scoreSize, -8)}
           <span style={{ display: "flex", fontFamily: MONO, fontSize: 28, color: "#a3a3a3", margin: "12px 0 0 14px" }}>/100</span>
@@ -124,15 +124,15 @@ export function renderShareCard({ data, variant, width, height, logoSrc, chromeS
         <div style={{ display: "flex", width: width * 0.46 }}>{bar(data.score, 8)}</div>
         <span style={{ display: "flex", fontFamily: MONO, fontSize: 16, color: PINK, letterSpacing: 2.2 }}>{data.statusLabel.toUpperCase()}</span>
       </div>
-      {panel(<div style={{ display: "flex", flexDirection: "column", gap: 26, width: "100%" }}>
+      {panel(<div style={{ display: "flex", flexDirection: "column", gap: 28, width: "100%" }}>
         {domainBlock}
         {categories(data, 22, 8, 18)}
-      </div>, 32)}
+      </div>, 34)}
     </div>;
   } else {
-    body = <div style={{ display: "flex", flex: 1, flexDirection: "row", alignItems: "stretch", gap: 32 }}>
+    body = <div style={{ display: "flex", flex: 1, width: "100%", flexDirection: "row", alignItems: "stretch", gap: 24 }}>
       <div style={{ display: "flex", flex: 1, flexDirection: "column", justifyContent: "center", gap: 14 }}>
-        <span style={{ display: "flex", fontFamily: MONO, fontSize: 14, color: PINK, letterSpacing: 2.4 }}>MY LAUNCH SCORED</span>
+        <span style={{ display: "flex", fontFamily: MONO, fontSize: 14, color: PINK, letterSpacing: 2.4 }}>LAUNCH SCORE</span>
         <div style={{ display: "flex", alignItems: "flex-start" }}>
           {chromeText(data.score ?? "—", scoreSize, scoreDigits >= 3 ? -7 : -9)}
           <span style={{ display: "flex", fontFamily: MONO, fontSize: 24, color: "#a3a3a3", margin: "10px 0 0 12px" }}>/100</span>
@@ -140,23 +140,25 @@ export function renderShareCard({ data, variant, width, height, logoSrc, chromeS
         <div style={{ display: "flex", width: 360, marginTop: 6 }}>{bar(data.score, 8)}</div>
         <span style={{ display: "flex", fontFamily: MONO, fontSize: 15, color: PINK, letterSpacing: 2.2 }}>{data.statusLabel.toUpperCase()}</span>
       </div>
-      <div style={{ display: "flex", width: 512 }}>
-        {panel(<div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%" }}>
+      <div style={{ display: "flex", width: 568, height: "100%", flexDirection: "column", justifyContent: "center" }}>
+        {panel(<div style={{ display: "flex", flexDirection: "column", gap: 20, width: "100%" }}>
           {domainBlock}
-          {categories(data, 16, 7, 11)}
-        </div>, 22)}
+          {categories(data, 18, 8, 13)}
+        </div>, 28)}
       </div>
     </div>;
   }
 
-  const ribbonWidth = tall ? Math.round(width * 1.15) : Math.round(width * 0.78);
-  const ribbonHeight = tall ? Math.round(height * 0.5) : Math.round(height * 1.08);
+  const ribbonWidth = tall ? Math.round(width * 0.7) : Math.round(width * 0.42);
+  const ribbonHeight = tall ? Math.round(height * 0.28) : Math.round(height * 0.55);
 
   return <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", background: "#000", color: "#fff", padding: pad, fontFamily: SANS, position: "relative", overflow: "hidden" }}>
-    {/* eslint-disable-next-line @next/next/no-img-element -- Satori needs a self-contained data URI. */}
-    <img src={chromeSrc} alt="" width={ribbonWidth} height={ribbonHeight} style={{ position: "absolute", top: tall ? -10 : -36, right: tall ? -30 : -8, objectFit: "cover", objectPosition: "right top" }} />
-    <div style={{ display: "flex", position: "absolute", top: 0, right: 0, width: tall ? "100%" : "62%", height: tall ? "48%" : "100%", background: "radial-gradient(circle at 88% 18%, rgba(255,46,126,.42), rgba(255,46,126,.08) 36%, rgba(0,0,0,0) 68%)" }} />
-    <div style={{ display: "flex", position: "absolute", top: 0, left: 0, width: tall ? "100%" : "58%", height: "100%", background: tall ? "linear-gradient(180deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.55) 42%, #000 68%)" : "linear-gradient(90deg, #000 0%, #000 58%, rgba(0,0,0,.72) 78%, rgba(0,0,0,0) 100%)" }} />
+    <div style={{ display: "flex", position: "absolute", top: tall ? -24 : -18, right: tall ? -36 : -28, opacity: 0.38 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- Satori needs a self-contained data URI. */}
+      <img src={chromeSrc} alt="" width={ribbonWidth} height={ribbonHeight} style={{ objectFit: "cover", objectPosition: "right top" }} />
+    </div>
+    <div style={{ display: "flex", position: "absolute", top: 0, right: 0, width: tall ? "64%" : "36%", height: tall ? "26%" : "42%", background: "radial-gradient(circle at 100% 0%, rgba(255,46,126,.16), rgba(255,46,126,.03) 34%, rgba(0,0,0,0) 58%)" }} />
+    <div style={{ display: "flex", position: "absolute", top: 0, left: 0, width: tall ? "100%" : "68%", height: "100%", background: tall ? "linear-gradient(180deg, rgba(0,0,0,.25) 0%, rgba(0,0,0,.62) 38%, #000 64%)" : "linear-gradient(90deg, #000 0%, #000 70%, rgba(0,0,0,.9) 88%, rgba(0,0,0,.55) 100%)" }} />
     <div style={{ display: "flex", position: "absolute", left: 0, right: 0, bottom: 0, height: tall ? 180 : 110, background: "linear-gradient(180deg, rgba(0,0,0,0), #000 72%)" }} />
     <div style={{ display: "flex", position: "relative", width: "100%" }}>{header}</div>
     <div style={{ display: "flex", position: "relative", flex: 1, width: "100%" }}>{body}</div>

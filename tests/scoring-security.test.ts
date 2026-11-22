@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import fixtures from "./fixtures/page-snapshots.json";
 import { deterministicFindings, summarizeLinkStatuses, isRobotsDisallowed } from "../lib/scanner";
-import { CATEGORY_WEIGHTS, scoreFindings } from "../lib/score";
+import { CATEGORY_WEIGHTS, makeFinding, reconcileDuplicateFindingScores, scoreFindings } from "../lib/score";
 import { isPublicAddress, normalizePublicUrl, UnsafeTargetError } from "../lib/ssrf";
 import { readBoundedBody } from "../lib/http";
 import { publicScan } from "../lib/store";
@@ -34,6 +34,31 @@ describe("scoring fixtures", () => {
       expect(score).toBeLessThanOrEqual(fixture.expected[1]);
     });
   }
+  it("deducts a finding id once when the same finding was saved twice", () => {
+    const titles = ["Hero", "Pricing", "Proof", "Footer"];
+    const findings = titles.flatMap((title) => {
+      const finding = makeFinding({ category: "design_brand", section: "design", severity: "high", title: `Text contrast is low in ${title}`, why_it_matters: "Low contrast is harder to read.", evidence: `${title} text is 1.20:1.`, fix: "Raise the contrast of the existing text." });
+      return [finding, { ...finding }];
+    });
+    expect(scoreFindings(findings, { design_brand: 0.75 }).categoryScores.design_brand).toBe(48);
+    const reconciled = reconcileDuplicateFindingScores({
+      score: 67,
+      categoryScores: { clarity: 50, conversion: 90, design_brand: 0, trust: 91, technical: 90, security: 67, seo_aeo: 72 },
+      findings,
+      scoreBreakdown: { categories: { design_brand: { score: 0, base: 100, ceiling: 88, lost: 104, count: 8 } }, top: [] },
+    });
+    expect(reconciled.categoryScores?.design_brand).toBe(48);
+    expect(reconciled.scoreBreakdown?.categories.design_brand).toMatchObject({ score: 48, lost: 52, count: 4 });
+    expect(reconciled.score).toBe(74);
+    expect(reconciled.findings).toHaveLength(8);
+    const shown = publicScan({
+      id: "5003bef3-2c69-4f79-93c6-fb62946144f2", url: "https://safeagent.live/", status: "complete", phase: "Report ready",
+      createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString(),
+      score: 67, categoryScores: { clarity: 50, conversion: 90, design_brand: 0, trust: 91, technical: 90, security: 67, seo_aeo: 72 }, findings, scoreBreakdown: { categories: { design_brand: { score: 0, base: 100, ceiling: 88, lost: 104, count: 8 } }, top: [] },
+    } as Parameters<typeof publicScan>[0]);
+    expect(shown.score).toBe(74);
+    expect(shown.categoryScores?.design_brand).toBe(48);
+  });
   it("limits category scores when only a partial set of checks is available", () => {
     const scored = scoreFindings([], { clarity: 0.6, conversion: 0.85, trust: 0.75, technical: 0.9 });
     expect(scored.categoryScores).toEqual({ clarity: 80, conversion: 93, design_brand: 78, trust: 88, technical: 95, security: 78, seo_aeo: 78 });

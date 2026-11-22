@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import postgres from "postgres";
+import { reconcileDuplicateFindingScores } from "./score";
 import type { ScanRecord } from "./types";
 
 let sqlClient: ReturnType<typeof postgres> | undefined;
@@ -132,7 +133,7 @@ export async function hasLiveWorker() {
 }
 
 export function publicScan(scan: ScanRecord) {
-  const safe = { ...scan };
+  const safe = { ...reconcileDuplicateFindingScores(scan) };
   delete safe.paidPayload; delete safe.leadEmail; delete safe.paid; delete safe.cacheKey; delete safe.leaseToken; delete safe.shareImageUrl; delete safe.paidRescanExpiresAt; delete safe.paidRescanTokenHash; delete safe.paidRescanSessionId; delete safe.paidRescanUseReleased; delete safe.annotatedCapture;
   const sections = ["design", "security", "seo", "leftovers", "forms", "technical", "other"] as const;
   const findingCounts = Object.fromEntries(sections.map((section) => {
@@ -142,7 +143,7 @@ export function publicScan(scan: ScanRecord) {
   const encryptionKey = Buffer.from(process.env.REPORT_TOKEN_ENCRYPTION_KEY ?? "", "base64");
   const checkoutConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID && process.env.STRIPE_WEBHOOK_SECRET && process.env.DATABASE_URL && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && encryptionKey.length === 32 && (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SITE_URL));
   if (!checkoutConfigured && !stripeWarningLogged) { console.warn("Paid unlock is hidden because checkout dependencies are not fully configured."); stripeWarningLogged = true; }
-  const allFindings = scan.findings ?? [];
+  const allFindings = safe.findings ?? [];
   const publicFindings = allFindings.slice(0, 3);
   const additionalFindings = allFindings.slice(3).map(({ id, code, category, section, severity, title, why_it_matters, evidence }) => ({
     id, code, category, section: section ?? "other", severity, title,
