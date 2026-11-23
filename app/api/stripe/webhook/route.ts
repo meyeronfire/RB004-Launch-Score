@@ -26,8 +26,8 @@ export async function POST(request: Request) {
     try {
       const purchased = await activatePurchase(event, event.data.object as Stripe.Checkout.Session);
       if (purchased) {
-        await trackPurchased();
         const session = event.data.object as Stripe.Checkout.Session;
+        await trackPurchased(session.metadata ?? undefined);
         if (session.metadata?.scanId) await enqueuePaidPrompt(session.metadata.scanId);
       }
     }

@@ -144,7 +144,9 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   async function checkout(section = "") {
     setCheckoutSection(section); setCheckoutMessage(""); setCheckoutPending(true);
     try {
-      const response = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scanId: id }) });
+      let attribution: unknown;
+      try { attribution = JSON.parse(sessionStorage.getItem(`rb004-attribution:${id}`) ?? "null"); } catch { attribution = undefined; }
+      const response = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scanId: id, attribution }) });
       const result = await response.json(); if (!response.ok || !result.url) throw new Error(result.error ?? "Checkout could not be started.");
       track("checkout_started");
       window.location.href = result.url;
