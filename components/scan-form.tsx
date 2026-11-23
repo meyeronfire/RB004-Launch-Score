@@ -71,7 +71,11 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
       }
       if (typeof result.remaining === "number") setRemaining(result.remaining);
       track("scan_started");
-      try { sessionStorage.setItem(`rb004-pending-scan:${result.id}`, "1"); } catch { /* Analytics are optional. */ }
+      try {
+        sessionStorage.setItem(`rb004-pending-scan:${result.id}`, "1");
+        const params = new URLSearchParams(window.location.search);
+        sessionStorage.setItem(`rb004-attribution:${result.id}`, JSON.stringify({ path: window.location.pathname, source: params.get("utm_source"), medium: params.get("utm_medium"), campaign: params.get("utm_campaign") }));
+      } catch { /* Analytics are optional. */ }
       router.push(`/r/${encodeURIComponent(result.id)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "This page could not be scanned. Please try again.");

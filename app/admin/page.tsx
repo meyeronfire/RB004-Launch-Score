@@ -3,7 +3,9 @@ import { AdminLogin } from "@/components/admin-login";
 import { adminMetrics, adminRecentScans } from "@/lib/free-tier";
 import { recentScanFailure } from "@/lib/browser-request-policy";
 import { ADMIN_COOKIE, validAdminCookie } from "@/lib/admin-auth";
+import type { Metadata } from "next";
 
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   const cookieStore = await cookies();

@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
+  experimental: { agentUpgrade: "security" },
   poweredByHeader: false,
   reactStrictMode: true,
   turbopack: { root: process.cwd() },

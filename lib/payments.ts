@@ -48,7 +48,7 @@ export function verifyStripeEvent(stripe: Stripe, raw: string, signature: string
   return stripe.webhooks.constructEvent(raw, signature, secret);
 }
 
-export async function makeCheckout(scanId: string) {
+export async function makeCheckout(scanId: string, attribution?: { path: string; source?: string; medium?: string; campaign?: string }) {
   const scan = await readScan(scanId);
   if (!scan || scan.status !== "complete") throw new Error("The scan must be complete before checkout.");
   if (!scan.paidPayload?.available) throw new Error("A complete Launch Plan is not available for this scan yet.");
@@ -80,7 +80,7 @@ export async function makeCheckout(scanId: string) {
   const session = await stripe.checkout.sessions.create({
       mode: "payment", payment_method_types: ["card"], client_reference_id: scanId, customer_creation: "always", expires_at: expiresAt,
       line_items: [{ quantity: 1, price: priceId }],
-      metadata: { scanId, priceId, releaseCode: RELEASE_CODE, oneTime: "true", checkoutAttemptId: attemptId },
+      metadata: { scanId, priceId, releaseCode: RELEASE_CODE, oneTime: "true", checkoutAttemptId: attemptId, ...(attribution ? { sourcePath: attribution.path, ...(attribution.source ? { utmSource: attribution.source } : {}), ...(attribution.medium ? { utmMedium: attribution.medium } : {}), ...(attribution.campaign ? { utmCampaign: attribution.campaign } : {}) } : {}) },
       success_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=complete`, cancel_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=cancelled`,
   }, { idempotencyKey: attemptId });
   await sql.begin(async (tx) => {

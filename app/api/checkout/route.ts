@@ -1,6 +1,7 @@
 import { makeCheckout } from "@/lib/payments";
 import { readBoundedBody } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
+import { readScanAttribution } from "@/lib/analytics-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,12 +13,13 @@ export async function POST(request: Request) {
   try { input = JSON.parse(body.body ?? ""); }
   catch { return Response.json({ error: "Checkout request was not valid JSON." }, { status: 400 }); }
   const scanId = input && typeof input === "object" && typeof (input as { scanId?: unknown }).scanId === "string" ? (input as { scanId: string }).scanId : "";
+  const attribution = readScanAttribution(input && typeof input === "object" ? (input as { attribution?: unknown }).attribution : undefined);
   if (!/^[a-f0-9-]{36}$/.test(scanId)) return Response.json({ error: "Report not found." }, { status: 404 });
   const limit = await rateLimit(request, "checkout");
   if (limit.misconfigured) return Response.json({ error: "Checkout rate limiting needs a trusted client IP header." }, { status: 503 });
   if (!limit.allowed) return Response.json({ error: "Checkout attempts are limited to five per network per day." }, { status: 429, headers: { "Retry-After": "86400" } });
   try {
-    const { session } = await makeCheckout(scanId);
+    const { session } = await makeCheckout(scanId, attribution);
     return Response.json({ url: session.url }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Checkout could not be started.";
