@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { builderPages } from "@/data/organic-content";
+import { builderPages } from "@/lib/content/organic-content";
 import { TrackedScanLink } from "@/components/tracked-scan-link";
 export function generateStaticParams(){return Object.keys(builderPages).map(builder=>({builder}));}
 export async function generateMetadata({params}:{params:Promise<{builder:string}>}):Promise<Metadata>{const {builder}=await params;const item=builderPages[builder as keyof typeof builderPages];return item?{title:`${item.name} Launch Checklist for Real Users | Ready for Real`,description:`A practical ${item.name} app launch workflow covering production access, security, deployment, and page readiness.`,alternates:{canonical:`/for/${builder}`}}:{title:"Builder not found"};}
