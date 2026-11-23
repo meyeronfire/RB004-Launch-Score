@@ -1,0 +1,13 @@
+# Ready for Real
+
+> Ready for Real is a launch readiness review for publicly accessible AI-built apps and websites. It scans observable page and technical signals and provides evidence-backed findings and practical remediation guidance.
+
+The free scan does not inspect private source code or backend configuration and is not a security certification or penetration test. A one-time paid upgrade offers a project-specific launch plan and coding-agent brief; see the live site for current pricing and terms.
+
+## Public resources
+- [Home and free scan](https://readyforreal.dev/)
+- [Launch checklist](https://readyforreal.dev/checklists)
+- [Scan methodology](https://readyforreal.dev/methodology)
+- [Guides](https://readyforreal.dev/guides)
+- [Free tools](https://readyforreal.dev/tools)
+- [Sitemap](https://readyforreal.dev/sitemap.xml)

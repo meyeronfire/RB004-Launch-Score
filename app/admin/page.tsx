@@ -2,7 +2,9 @@ import { cookies } from "next/headers";
 import { AdminLogin } from "@/components/admin-login";
 import { adminMetrics } from "@/lib/free-tier";
 import { ADMIN_COOKIE, validAdminCookie } from "@/lib/admin-auth";
+import type { Metadata } from "next";
 
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   const cookieStore = await cookies();

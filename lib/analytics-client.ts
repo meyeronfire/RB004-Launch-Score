@@ -2,7 +2,7 @@ declare global {
   interface Window { plausible?: (event: string, options?: { props?: Record<string, string | number | boolean> }) => void }
 }
 
-export function track(event: "scan_started" | "scan_done" | "share_clicked" | "checkout_started" | "purchased", props?: Record<string, string | number | boolean>) {
+export function track(event: "scan_started" | "scan_done" | "share_clicked" | "checkout_started" | "purchased" | "free_tool_started" | "free_tool_completed" | "landing_cta_clicked", props?: Record<string, string | number | boolean>) {
   if (typeof window === "undefined") return;
   try { window.plausible?.(event, props ? { props } : undefined); }
   catch { /* Optional analytics must not interrupt the user action. */ }
