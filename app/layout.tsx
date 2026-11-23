@@ -6,6 +6,15 @@ import { PRODUCT_NAME, SITE_URL } from "@/config/release";
 import { PlausibleScript } from "@/components/plausible";
 import { ClarityScript } from "@/components/clarity";
 
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: PRODUCT_NAME,
+  url: SITE_URL,
+  description: "Launch readiness reviews for publicly accessible AI-built apps and websites.",
+  brand: { "@type": "Brand", name: "Regular Basis" },
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: `${PRODUCT_NAME} — Launch Readiness Check for AI-Built Apps`,
@@ -27,5 +36,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}<PlausibleScript /><ClarityScript /></body></html>;
+  return <html lang="en"><body>{children}<script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd).replace(/</g, "\\u003c") }} /><PlausibleScript /><ClarityScript /></body></html>;
 }
