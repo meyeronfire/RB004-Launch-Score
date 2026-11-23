@@ -20,6 +20,7 @@ import { calculateAuditCounts } from "./audit-counts";
 import { releaseFreeScanReservation, reserveFreeScan, settleScanCost } from "./free-tier";
 import { isOwnerScanRedirectAllowed, isOwnerScanTarget } from "./owner-scan-access";
 import { inspectLinkedPage } from "./page-audit";
+import { admitBrowserRequest, classifyBrowserRequest, htmlWithoutExecutableScripts, isScannerBlockedConsoleMessage, recoverableRenderFailure } from "./browser-request-policy";
 
 const asDataUrl = (buffer: Buffer) => `data:image/jpeg;base64,${buffer.toString("base64")}`;
 const now = () => new Date().toISOString();
@@ -45,6 +46,7 @@ export function scanFailureMessage(error: unknown) {
   const detail = error instanceof Error ? error.message : "";
   const code = error && typeof error === "object" ? String((error as { code?: unknown }).code ?? "") : "";
   if (/bot protection|automated review|HTTP (401|403|429)/i.test(detail)) return "This site is blocking automated review. Try again later or check whether its bot protection allows public scans.";
+  if (/live page render was interrupted|ERR_BLOCKED_BY_CLIENT|ERR_ABORTED|net::ERR_/i.test(detail)) return "The live page render was interrupted before the review could finish. Try again.";
   if (/timeout|timed out|took too long|deadline|exceeded its time limit/i.test(detail) || /ETIMEDOUT|ESOCKETTIMEDOUT/i.test(code)) return "This page took too long to respond. Check that it is online and try again.";
   if (/HTTP 404|not found/i.test(detail)) return "This page could not be found. Check the URL and try again.";
   if (/robots\.txt|disallow/i.test(detail)) return "This site does not allow this scan in its public robots.txt rules.";
@@ -249,6 +251,8 @@ function stackHints(html: string) {
 }
 
 async function pageCapture(context: BrowserContext, url: string, mobile: boolean, requestCounter: { count: number; bytes: number; active: number; waiting: Array<() => void>; buckets: Record<"script" | "style" | "image" | "font" | "other", number>; largest: Array<{ url: string; bytes: number; type: string }> }, budget: ScanRequestBudget, restrictOwnerNavigation = false) {
+  let renderPass: "full" | "static" = "full";
+  let documentRequests = 0;
   await context.route("**/*", async (route) => {
     const request = route.request(); const target = request.url();
     if (["data:", "blob:", "about:"].some((prefix) => target.startsWith(prefix))) return route.continue();
@@ -259,8 +263,10 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
         try { if (!isOwnerScanTarget(new URL(target))) return route.abort("blockedbyclient"); } catch { return route.abort("blockedbyclient"); }
       }
     }
-    if (request.method() !== "GET" || requestCounter.count >= 48 || requestCounter.bytes >= 16_000_000 || budget.remaining <= 6) return route.abort("blockedbyclient");
-    requestCounter.count++;
+    const requestKind = classifyBrowserRequest({ url: target, resourceType: request.resourceType(), method: request.method(), headers: request.headers(), isNavigation: request.isNavigationRequest() });
+    if (renderPass === "static" && request.resourceType() === "script") return route.abort("blockedbyclient");
+    if (admitBrowserRequest({ kind: requestKind, method: request.method(), documentRequests, assetRequests: requestCounter.count, bytes: requestCounter.bytes, budgetRemaining: budget.remaining }) === "skip") return route.abort("blockedbyclient");
+    if (requestKind === "document") documentRequests += 1; else requestCounter.count++;
     if (requestCounter.active >= 6) await new Promise<void>((resolve) => requestCounter.waiting.push(resolve));
     requestCounter.active++;
     try {
@@ -279,21 +285,28 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
       requestCounter.largest.push({ url: target, bytes: response.body.length, type: kind });
       const headers: Record<string, string> = {};
       for (const key of ["content-type", "cache-control", "last-modified", "etag"]) { const value = response.headers[key]; if (typeof value === "string") headers[key] = value; }
-      return route.fulfill({ status: response.status, headers, body: response.body });
+      const body = renderPass === "static" && requestKind === "document" ? Buffer.from(htmlWithoutExecutableScripts(response.body.toString("utf8"))) : response.body;
+      return route.fulfill({ status: response.status, headers, body });
     } catch { return route.abort("blockedbyclient"); }
     finally { requestCounter.active--; requestCounter.waiting.shift()?.(); }
   });
+  const blankScreenshot = Buffer.from("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGf/9k=", "base64");
+  let lastRenderError: unknown;
+  try {
+  for (let attempt = 0; attempt < 2; attempt++) {
   const page = await context.newPage();
   let consoleErrors = 0;
   const consoleMessages: string[] = [];
-  page.on("console", (message) => { if (message.type() === "error") { consoleErrors += 1; if (consoleMessages.length < 5) consoleMessages.push(String(message.text()).slice(0, 180)); } });
+  page.on("console", (message) => { const text = String(message.text()); if (message.type() === "error" && !isScannerBlockedConsoleMessage(text)) { consoleErrors += 1; if (consoleMessages.length < 5) consoleMessages.push(text.slice(0, 180)); } });
   page.on("pageerror", (error) => { consoleErrors += 1; if (consoleMessages.length < 5) consoleMessages.push(`Uncaught: ${String(error).slice(0, 180)}`); });
   try {
     const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: mobile ? 25_000 : 20_000 });
     if (!response || response.status() >= 500) throw new SafeFetchError(`The page returned HTTP ${response?.status() ?? "no response"}.`);
     if ([401, 403, 429].includes(response.status())) throw new SafeFetchError("This site is blocking automated review. Try again later or check whether its bot protection allows public scans.");
     await page.waitForTimeout(800);
-    const screenshot = await page.screenshot({ type: "jpeg", quality: 72, fullPage: false, timeout: 8000 });
+    let screenshot: Buffer;
+    try { screenshot = await page.screenshot({ type: "jpeg", quality: 72, fullPage: false, timeout: 8000 }); }
+    catch (error) { if (renderPass === "full") throw error; screenshot = blankScreenshot; }
     const pageHeight = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight));
     let fullPageBuffer: Buffer | undefined;
     const screenshotSegments: Array<{ image: string; top: number; width: number; height: number }> = [];
@@ -330,8 +343,22 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
         return { dcl: Math.round(nav?.domContentLoadedEventEnd ?? 0), load: Math.round(nav?.loadEventEnd ?? 0), fcp: Math.round(paints.find((paint) => paint.name === "first-contentful-paint")?.startTime ?? 0), lcp: Math.round(rb?.lcp ?? 0), cls: Math.round((rb?.cls ?? 0) * 1000) / 1000, resources: res.length, scripts: res.filter((entry) => entry.initiatorType === "script").length, thirdPartyOrigins: thirdParty.size, transferKB: Math.round(res.reduce((sum, entry) => sum + (entry.encodedBodySize || 0), 0) / 1024) };
       });
     } catch { /* Speed metrics are best-effort. */ }
-    return { responseStatus: response.status(), currentUrl: page.url(), snapshot: await pageSnapshot(page), screenshot: asDataUrl(screenshot), fullPageScreenshot: fullPageBuffer ? asDataUrl(fullPageBuffer) : undefined, fullPageSize: fullPageSize ? { width: fullPageSize.width, height: fullPageSize.height } : undefined, screenshotSegments, consoleErrors, consoleMessages, speed };
-  } finally { await page.close(); await context.unrouteAll({ behavior: "ignoreErrors" }); }
+    return { responseStatus: response.status(), currentUrl: page.url(), snapshot: await pageSnapshot(page), screenshot: asDataUrl(screenshot), fullPageScreenshot: fullPageBuffer ? asDataUrl(fullPageBuffer) : undefined, fullPageSize: fullPageSize ? { width: fullPageSize.width, height: fullPageSize.height } : undefined, screenshotSegments, consoleErrors, consoleMessages, speed, scriptsExecuted: renderPass === "full" };
+  } catch (error) {
+    lastRenderError = error;
+    if (error instanceof SafeFetchError || error instanceof UnsafeTargetError || attempt === 1 || !recoverableRenderFailure(error)) break;
+    renderPass = "static";
+    documentRequests = 0;
+  } finally { await page.close(); }
+  }
+  if (lastRenderError instanceof SafeFetchError || lastRenderError instanceof UnsafeTargetError) throw lastRenderError;
+  if (recoverableRenderFailure(lastRenderError)) {
+    const detail = lastRenderError instanceof Error ? lastRenderError.message : "";
+    if (/timeout|timed out/i.test(detail)) throw new SafeFetchError("The live page took too long to render. Try again.");
+    throw new SafeFetchError("The live page render was interrupted before the review could finish. Try again.");
+  }
+  throw lastRenderError instanceof Error ? lastRenderError : new SafeFetchError("The live page render was interrupted before the review could finish. Try again.");
+  } finally { await context.unrouteAll({ behavior: "ignoreErrors" }); }
 }
 
 export function summarizeLinkStatuses(statuses: Array<number | undefined>) {
@@ -463,6 +490,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     } finally { signal?.removeEventListener("abort", closeBrowser); browserMs += Date.now() - browserStartedAt; await browser.close(); }
     if (signal?.aborted) throw new SafeFetchError(scanTimeLimitMessage(true));
     const snap = desktop.snapshot; const mobileSnap = mobile.snapshot;
+    const scriptsExecuted = desktop.scriptsExecuted !== false && mobile.scriptsExecuted !== false;
     const pageUrl = new URL(finalUrl); const origin = pageUrl.origin;
     await phase(id, "Checking links and page signals…", leaseToken);
     const sameOriginLinks = snap.links.filter((href: string) => { try { return new URL(href).origin === origin && new URL(href).pathname !== pageUrl.pathname; } catch { return false; } });
@@ -558,7 +586,7 @@ async function processScanCore(id: string, leaseToken?: string) {
       jsonLd: snap.jsonLd, imageCount: snap.imageCount, imageAltCount: snap.imageAltCount, ogTitle: snap.ogTitle, ogDescription: snap.ogDescription, ogImage: snap.ogImage, twitterCard: snap.twitterCard }, sitemap, []);
     const consoleMessages = [...(desktop.consoleMessages ?? []), ...(mobile.consoleMessages ?? [])];
     const leftovers = leftoverFindings({ text: `${snap.text} ${snap.html}`, title: snap.title, favicon: snap.favicon, imageUrls: snap.imageUrls,
-      placeholderLinks: snap.placeholderLinks, testimonials: snap.testimonialBlocks, consoleErrors: desktop.consoleErrors + mobile.consoleErrors, consoleMessages,
+      placeholderLinks: snap.placeholderLinks, testimonials: snap.testimonialBlocks, consoleErrors: scriptsExecuted ? desktop.consoleErrors + mobile.consoleErrors : 0, consoleMessages: scriptsExecuted ? consoleMessages : [],
       comingSoonCount: (snap.text.match(/coming soon/gi) ?? []).length });
     const formAudit = formFindings({ forms: snap.forms, primaryCtas: snap.primaryCtas.filter((cta: { href: string }) => Boolean(cta.href)), statusByUrl: linkResult.statusByUrl, baseUrl: finalUrl.toString() });
     const designSignals = auditDesignSignals([snap.visualSignals, mobileSnap.visualSignals]);
@@ -578,21 +606,21 @@ async function processScanCore(id: string, leaseToken?: string) {
       twitterCard: snap.twitterCard ? { state: "checked", value: snap.twitterCard } : { state: "checked", value: "Missing" }, hreflang: { state: "checked", value: snap.hreflang.length }, jsonLd: { state: "checked", value: `${snap.jsonLd.valid} valid · ${snap.jsonLd.invalid} invalid` },
       securityHeaders: { state: "checked", value: Object.values(security.checks).filter((item) => item.value === "Present").length }, exposedFiles: { state: "checked", value: exposure.exposed.length }, frontendSecrets: { state: "checked", value: secrets.length },
       mixedContent: { state: "checked", value: snap.mixedContent.length }, cookieIssues: { state: "checked", value: cookies.length }, corsWildcardRoutes: { state: "checked", value: corsWildcards.length },
-      formCount: { state: "checked", value: snap.forms.length }, primaryCtaTargets: { state: "checked", value: `${linkResult.checked} checked · ${linkResult.unknownCount} unknown` }, consoleErrors: { state: "checked", value: desktop.consoleErrors + mobile.consoleErrors },
+      formCount: { state: "checked", value: snap.forms.length }, primaryCtaTargets: { state: "checked", value: `${linkResult.checked} checked · ${linkResult.unknownCount} unknown` }, consoleErrors: scriptsExecuted ? { state: "checked", value: desktop.consoleErrors + mobile.consoleErrors } : unknown("Page scripts did not finish, so console errors could not be verified."),
       wholeSitePages: { state: "checked", value: `${subpagesAudited + 1} page${subpagesAudited ? "s" : ""} audited (entry + ${subpagesAudited} linked subpages)` },
-      consoleErrorDetails: (desktop.consoleMessages ?? []).length + (mobile.consoleMessages ?? []).length ? { state: "checked" as const, value: [...(desktop.consoleMessages ?? []), ...(mobile.consoleMessages ?? [])].join(" | ") } : { state: "checked" as const, value: "No console errors observed." },
+      consoleErrorDetails: !scriptsExecuted ? unknown("Page scripts did not finish, so console errors could not be verified.") : (desktop.consoleMessages ?? []).length + (mobile.consoleMessages ?? []).length ? { state: "checked" as const, value: [...(desktop.consoleMessages ?? []), ...(mobile.consoleMessages ?? [])].join(" | ") } : { state: "checked" as const, value: "No console errors observed." },
       brokenLinkDetails: linkResult.broken.length ? { state: "checked" as const, value: linkResult.broken.slice(0, 6).join(" | ") } : { state: "checked" as const, value: "No broken links among the checked set." },
       redirectChain: { state: "checked", value: initial.redirects.length ? initial.redirects.join(" → ") : "No redirects" },
       assetWeights: { state: "checked", value: Object.entries(counter.buckets).map(([kind, bytes]) => `${kind} ${Math.round(bytes / 1024)} KB`).join(" · ") },
       largestAssets: { state: "checked", value: counter.largest.sort((a, b) => b.bytes - a.bytes).slice(0, 4).map((item) => `${item.url.split("/").pop()?.slice(0, 40) || item.url.slice(0, 40)} ${Math.round(item.bytes / 1024)} KB`).join(" · ") || "No subresources were fetched." },
       ttfb: { state: "checked", value: `${ttfbMs} ms` },
       requestCount: { state: "checked", value: counter.count },
-      speedDcl: { state: "checked", value: `${desktop.speed?.dcl ?? 0} ms DOMContentLoaded` },
-      speedLoad: { state: "checked", value: `${desktop.speed?.load ?? 0} ms load complete` },
-      speedFcp: { state: "checked", value: `${desktop.speed?.fcp ?? 0} ms first contentful paint` },
-      speedLcp: { state: "checked", value: `${desktop.speed?.lcp ?? 0} ms largest contentful paint` },
-      speedCls: { state: "checked", value: desktop.speed?.cls ?? 0 },
-      speedResources: { state: "checked", value: `${desktop.speed?.resources ?? 0} requests · ${desktop.speed?.scripts ?? 0} scripts · ${desktop.speed?.thirdPartyOrigins ?? 0} third-party origins · ${desktop.speed?.transferKB ?? 0} KB transfer` },
+      speedDcl: scriptsExecuted ? { state: "checked", value: `${desktop.speed?.dcl ?? 0} ms DOMContentLoaded` } : unknown("Page scripts did not finish, so this browser timing could not be verified."),
+      speedLoad: scriptsExecuted ? { state: "checked", value: `${desktop.speed?.load ?? 0} ms load complete` } : unknown("Page scripts did not finish, so this browser timing could not be verified."),
+      speedFcp: scriptsExecuted ? { state: "checked", value: `${desktop.speed?.fcp ?? 0} ms first contentful paint` } : unknown("Page scripts did not finish, so this browser timing could not be verified."),
+      speedLcp: scriptsExecuted ? { state: "checked", value: `${desktop.speed?.lcp ?? 0} ms largest contentful paint` } : unknown("Page scripts did not finish, so this browser timing could not be verified."),
+      speedCls: scriptsExecuted ? { state: "checked", value: desktop.speed?.cls ?? 0 } : unknown("Page scripts did not finish, so this browser timing could not be verified."),
+      speedResources: scriptsExecuted ? { state: "checked", value: `${desktop.speed?.resources ?? 0} requests · ${desktop.speed?.scripts ?? 0} scripts · ${desktop.speed?.thirdPartyOrigins ?? 0} third-party origins · ${desktop.speed?.transferKB ?? 0} KB transfer` } : unknown("Page scripts did not finish, so this browser timing could not be verified."),
     };
     const current = await readScan(id); if (!current) return;
     await phase(id, "Preparing the evidence-led report…", leaseToken);

@@ -42,9 +42,10 @@ beforeEach(() => {
   mocks.verifyPaidRescanToken.mockResolvedValue(undefined);
   mocks.consumePaidRescan.mockResolvedValue(undefined);
   process.env.RB004_OWNER_SCAN_HOSTS = "rb004.vercel.app";
+  delete process.env.SCAN_ADMIN_KEY;
 });
 
-afterEach(() => { delete process.env.RB004_OWNER_SCAN_HOSTS; });
+afterEach(() => { delete process.env.RB004_OWNER_SCAN_HOSTS; delete process.env.SCAN_ADMIN_KEY; });
 
 describe("configured free-scan hosts", () => {
   it("bypasses the free quota without granting a paid report", async () => {

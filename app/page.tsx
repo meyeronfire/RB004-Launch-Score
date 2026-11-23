@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
-import { RELEASE_CODE, PRODUCT_NAME, PRICE_FIX_PROMPT_USD } from "@/config/release";
+import { PRODUCT_NAME, PRICE_FIX_PROMPT_USD } from "@/config/release";
+import { SiteFooter } from "@/components/site-footer";
 import { ScanForm } from "@/components/scan-form";
 import { exampleReport } from "@/lib/example";
 import { HeroReportPreview } from "@/components/hero-report-preview";
@@ -94,6 +95,6 @@ export default async function Home({ searchParams }: PageProps<"/">) {
       </div>
     </section>
     <section className="wrap editorial" aria-labelledby="resources-title"><div className="section-head"><h2 id="resources-title">Prepare before you launch.</h2><p>Use the checklist for owner tasks and learn what a public scan can verify.</p></div><div className="launch-journey-grid"><article><span className="mono">FREE RESOURCE</span><h3>Launch checklists</h3><p>Practical steps for security, SEO, SaaS operations, and AI-built apps.</p><Link href="/checklists">Open checklist →</Link></article><article><span className="mono">METHODOLOGY</span><h3>Understand your scan</h3><p>See how findings are collected and where public scan limits apply.</p><Link href="/methodology">Read methodology →</Link></article><article><span className="mono">FIELD GUIDES</span><h3>Build for real users</h3><p>Independent advice for popular AI app builders and launch workflows.</p><Link href="/guides">Browse guides →</Link></article></div></section>
-    <footer className="wrap footer"><span>{RELEASE_CODE} — A Regular Basis release. Berlin.</span><nav className="footer-links" aria-label="Regular Basis releases"><a href="https://www.getklare.com/">RB001</a><a href="https://epkay.com/">RB002</a><a href="https://urtype.app/">RB003</a><Link href="/terms">TERMS</Link><Link href="/privacy">PRIVACY</Link><Link href="/refund">REFUNDS</Link><a href="https://regularbasis.studio">REGULAR BASIS</a></nav></footer>
+    <SiteFooter navLabel="Regular Basis releases"><a href="https://www.getklare.com/">RB001</a><a href="https://epkay.com/">RB002</a><a href="https://urtype.app/">RB003</a><Link href="/terms">TERMS</Link><Link href="/privacy">PRIVACY</Link><Link href="/refund">REFUNDS</Link><Link href="/tools">TOOLS</Link><a href="https://regularbasis.studio">REGULAR BASIS</a></SiteFooter>
   </main>;
 }

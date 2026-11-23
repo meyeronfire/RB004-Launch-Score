@@ -3,8 +3,7 @@ import { publicScan, readScan } from "@/lib/store";
 import { exampleReport } from "@/lib/example";
 import { buildShareCardData, SHARE_FORMATS, isShareVariant, isShareFormat } from "@/lib/share-card";
 import { renderShareCard } from "@/lib/share-card-render";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { loadShareCardAssets, shareCardHeaders } from "@/lib/share-card-assets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,17 +18,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const download = url.searchParams.get("download") === "1";
   const scan = id === "example" ? exampleReport : await readScan(id);
   if (!scan || scan.status !== "complete" || typeof scan.score !== "number") return new Response("Report not found", { status: 404 });
-  const [interDisplay, geistMono, logo] = await Promise.all([
-    readFile(path.join(process.cwd(), "public/fonts/inter-display-medium.ttf")),
-    readFile(path.join(process.cwd(), "public/fonts/geist-mono.ttf")),
-    readFile(path.join(process.cwd(), "public/r4r-logo.jpg")),
-  ]);
+  const { fonts, logoSrc, chromeSrc } = await loadShareCardAssets();
   const data = buildShareCardData(publicScan(scan));
-  const logoSrc = `data:image/jpeg;base64,${logo.toString("base64")}`;
   const { width, height } = SHARE_FORMATS[format];
-  return new ImageResponse(renderShareCard({ data, variant, width, height, logoSrc }), {
-    width, height,
-    fonts: [{ name: "Inter Display", data: interDisplay, style: "normal", weight: 500 }, { name: "Geist Mono", data: geistMono, style: "normal", weight: 400 }],
-    headers: download ? { "Content-Disposition": `attachment; filename="ready-for-real-${variant}-${format}.png"` } : undefined,
-  });
+  const headers = download
+    ? shareCardHeaders({ "Cache-Control": "private, no-store", "Content-Disposition": `attachment; filename="ready-for-real-${variant}-${format}.png"` })
+    : shareCardHeaders();
+  return new ImageResponse(renderShareCard({ data, variant, width, height, logoSrc, chromeSrc }), { width, height, fonts, headers });
 }

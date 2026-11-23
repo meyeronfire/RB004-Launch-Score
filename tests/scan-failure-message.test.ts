@@ -12,5 +12,8 @@ describe("scan failure messages", () => {
     expect(scanFailureMessage(new SafeFetchError("This site is blocking automated review."))).toMatch(/blocking automated review/i);
     expect(scanFailureMessage(new SafeFetchError("This URL does not return a reviewable HTML page."))).toMatch(/reviewable HTML page/i);
     expect(scanFailureMessage(new Error("secret internal stack trace"))).toMatch(/could not be scanned/i);
+    expect(scanFailureMessage(new Error("page.goto: net::ERR_BLOCKED_BY_CLIENT at https://example.test/"))).toMatch(/live page render was interrupted/i);
+    expect(scanFailureMessage(new Error("page.goto: net::ERR_BLOCKED_BY_CLIENT at https://example.test/"))).not.toMatch(/ERR_BLOCKED_BY_CLIENT/);
+    expect(scanFailureMessage(new SafeFetchError("The live page render was interrupted before the review could finish. Try again."))).toMatch(/try again/i);
   });
 });

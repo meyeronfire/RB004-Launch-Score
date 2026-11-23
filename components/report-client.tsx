@@ -22,6 +22,7 @@ import { ReportArtifactActions } from "@/components/report-artifact-actions";
 import { ReportFinding } from "@/components/report-finding";
 import { ReportOtherChecks } from "@/components/report-other-checks";
 import { LaunchPlan } from "@/components/launch-plan";
+import { SiteFooter } from "@/components/site-footer";
 
 type FreeReport = ReturnType<typeof import("@/lib/store").publicScan>;
 const labels: Record<Category, string> = { clarity: "Clarity", conversion: "Conversion", design_brand: "Design & Brand", trust: "Trust", technical: "Technical", security: "Security", seo_aeo: "SEO / AEO" };
@@ -299,6 +300,6 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
       <details className="share-preview-disclosure"><summary>Preview your share card</summary><ReportSharePreview scan={scan} /></details>
       </section>
     </>}
-    <footer className="wrap footer"><span>{RELEASE_CODE} — A Regular Basis release. Berlin.</span><nav className="footer-links" aria-label="Legal and navigation"><Link href="/">Run another scan</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link><Link href="/refund">Refunds</Link></nav></footer>
+    <SiteFooter navLabel="Legal and navigation"><Link href="/">Run another scan</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link><Link href="/refund">Refunds</Link></SiteFooter>
   </main>;
 }

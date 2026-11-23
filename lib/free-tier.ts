@@ -199,6 +199,9 @@ export async function adminMetrics() {
   const sql = database(); if (!sql) throw new Error("The reporting database is not configured.");
   const rows = await sql<Record<string, string | number>[]>`SELECT
     (SELECT count(*) FROM scans WHERE created_at>=date_trunc('day',now())) AS scans_today,
+    (SELECT count(*) FROM scans WHERE created_at>=date_trunc('month',now())) AS scans_month,
+    (SELECT count(*) FROM scans) AS scans_total,
+    (SELECT count(*) FROM scans WHERE status='complete') AS scans_completed_total,
     (SELECT COALESCE(sum(estimated_usd),0) FROM scan_costs WHERE created_at>=date_trunc('day',now()))
       + (SELECT COALESCE(sum(estimated_usd),0) FROM paid_prompt_costs WHERE incurred_at>=date_trunc('day',now())) AS spend_today,
     (SELECT COALESCE(sum(estimated_usd),0) FROM scan_costs WHERE created_at>=date_trunc('month',now()))
@@ -207,4 +210,11 @@ export async function adminMetrics() {
     (SELECT count(*) FROM purchases WHERE revoked_at IS NULL AND created_at>=date_trunc('day',now())) AS paid_conversions_today,
     (SELECT count(*) FROM purchases WHERE revoked_at IS NULL AND created_at>=date_trunc('month',now())) AS paid_conversions_month`;
   return rows[0];
+}
+
+export async function adminRecentScans() {
+  const sql = database(); if (!sql) throw new Error("The reporting database is not configured.");
+  const rows = await sql<{ id: string; url: string; status: string; created_at: Date; score: number | null; error: string | null }[]>`SELECT id,url,status,created_at,(payload->>'score')::integer AS score, payload->>'error' AS error
+    FROM scans ORDER BY created_at DESC LIMIT 10`;
+  return rows.map((row) => ({ ...row }));
 }
