@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { InteractiveChecklist } from "@/components/interactive-checklist";
 
 export const metadata: Metadata = { title: "AI App Launch Checklist | Ready for Real", description: "A practical pre-launch checklist for AI-built apps, covering security, SEO, performance, user experience, and deployment.", alternates: { canonical: "/checklists" }, openGraph: { title: "AI App Launch Checklist | Ready for Real", description: "A practical pre-launch checklist for AI-built apps.", url: "/checklists", type: "article" } };
 const groups = [
@@ -9,4 +10,4 @@ const groups = [
   ["UX & trust", "Explain who the product is for and what happens after the primary action.", "Check forms, navigation, keyboard focus, contrast, and touch target sizes.", "Make pricing, support contact, privacy, and refund terms easy to find.", "Remove placeholder content and verify all links and integrations."],
   ["Deployment & operations", "Verify production environment variables and database migrations.", "Test the deployed domain, TLS, redirects, and custom error pages.", "Check backups and recovery steps for data the product cannot lose.", "Review payment webhooks and run a safe test transaction before launch."],
 ];
-export default function ChecklistPage() { return <main className="wrap editorial" style={{paddingTop: "3rem"}}><p className="mono">FREE RESOURCE · NO ACCOUNT</p><h1>AI app launch checklist.</h1><p>Work through these owner checks before inviting real users. Browser based scans can help with visible signals, but cannot confirm private code, database rules, or operational readiness.</p>{groups.map(([title,...items])=><section key={title} style={{marginTop:"2.5rem"}}><h2>{title}</h2><ul>{items.map(item=><li key={item} style={{margin:"1rem 0"}}><label><input type="checkbox" /> {item}</label></li>)}</ul></section>)}<p><Link href="/">Run a free public page scan →</Link></p></main> }
+export default function ChecklistPage() { return <main className="wrap editorial" style={{paddingTop: "3rem"}}><p className="mono">FREE RESOURCE · NO ACCOUNT</p><h1>AI app launch checklist.</h1><p>Work through these owner checks before inviting real users. Browser based scans can help with visible signals, but cannot confirm private code, database rules, or operational readiness.</p><InteractiveChecklist groups={groups as [string,...string[]][]}/><p><Link href="/">Run a free public page scan →</Link></p></main> }

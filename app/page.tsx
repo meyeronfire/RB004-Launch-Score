@@ -41,8 +41,8 @@ export default async function Home({ searchParams }: PageProps<"/">) {
       </header>
       <section className="wrap hero" aria-labelledby="hero-title">
         <div className="hero-content">
-          <h1 id="hero-title">Will Your Launch Page Convert a <em>Stranger?</em></h1>
-          <p className="hero-sub">The launch score for vibe-coded apps.</p>
+          <h1 id="hero-title">Is Your AI-Built App Ready for <em>Real Users?</em></h1>
+          <p className="hero-sub">Find what to fix before your users do.</p>
           <ScanForm initialUrl={rescanUrl} />
           <p className="microcopy">FREE · ABOUT 60 SECONDS · NO SIGNUP</p>
         </div>
@@ -93,6 +93,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         </div>
       </div>
     </section>
-    <footer className="wrap footer"><span>{RELEASE_CODE} — A Regular Basis release. Berlin.</span><nav className="footer-links" aria-label="Regular Basis releases"><a href="https://www.getklare.com/">RB001</a><a href="https://epkay.com/">RB002</a><a href="https://urtype.app/">RB003</a><a href="/terms">TERMS</a><a href="/privacy">PRIVACY</a><a href="/refund">REFUNDS</a><a href="https://regularbasis.studio">REGULAR BASIS</a></nav></footer>
+    <section className="wrap editorial" aria-labelledby="resources-title"><div className="section-head"><h2 id="resources-title">Prepare before you launch.</h2><p>Use the checklist for owner tasks and learn what a public scan can verify.</p></div><div className="launch-journey-grid"><article><span className="mono">FREE RESOURCE</span><h3>Launch checklists</h3><p>Practical steps for security, SEO, SaaS operations, and AI-built apps.</p><Link href="/checklists">Open checklist →</Link></article><article><span className="mono">METHODOLOGY</span><h3>Understand your scan</h3><p>See how findings are collected and where public scan limits apply.</p><Link href="/methodology">Read methodology →</Link></article><article><span className="mono">FIELD GUIDES</span><h3>Build for real users</h3><p>Independent advice for popular AI app builders and launch workflows.</p><Link href="/guides">Browse guides →</Link></article></div></section>
+    <footer className="wrap footer"><span>{RELEASE_CODE} — A Regular Basis release. Berlin.</span><nav className="footer-links" aria-label="Regular Basis releases"><a href="https://www.getklare.com/">RB001</a><a href="https://epkay.com/">RB002</a><a href="https://urtype.app/">RB003</a><Link href="/terms">TERMS</Link><Link href="/privacy">PRIVACY</Link><Link href="/refund">REFUNDS</Link><a href="https://regularbasis.studio">REGULAR BASIS</a></nav></footer>
   </main>;
 }
