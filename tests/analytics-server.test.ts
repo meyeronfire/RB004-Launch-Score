@@ -11,13 +11,13 @@ describe("optional server purchase analytics", () => {
     await trackPurchased();
     expect(fetch).not.toHaveBeenCalled();
   });
-  it("uses the fixed provider endpoint without purchaser information", async () => {
+  it("attributes purchases to a sanitized landing page without purchaser or target URL data", async () => {
     vi.stubEnv("NEXT_PUBLIC_PLAUSIBLE_DOMAIN", "launch.example.test");
-    await trackPurchased();
+    await trackPurchased({ sourcePath: "/guides/ready-to-launch", utmSource: "newsletter", utmMedium: "email", utmCampaign: "november_launch" });
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, options] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe("https://plausible.io/api/event");
-    expect(JSON.parse(options?.body as string)).toEqual({ name: "purchased", domain: "launch.example.test", url: SITE_URL });
+    expect(JSON.parse(options?.body as string)).toEqual({ name: "purchased", domain: "launch.example.test", url: `${SITE_URL}/guides/ready-to-launch`, props: { price_usd: 12, utm_source: "newsletter", utm_medium: "email", utm_campaign: "november_launch" } });
     expect(options?.headers).toEqual({ "content-type": "application/json", "user-agent": "RB004-Launch-Score-Server/1.0" });
     expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
