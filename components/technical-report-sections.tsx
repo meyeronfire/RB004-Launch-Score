@@ -1,12 +1,13 @@
 "use client";
 
+import { lighthouseChecks } from "@/lib/lighthouse-fields";
 import Image from "next/image";
 import { useState } from "react";
-import type { AiCrawlerReport, LighthouseStrategy, LighthouseReport, LinkedPageAudit, MetricCheck } from "@/lib/types";
+import type { EngineCoverage, EngineId, AiCrawlerReport, LighthouseStrategy, LighthouseReport, LinkedPageAudit, MetricCheck } from "@/lib/types";
 import { GlassCard } from "@/components/glass-card";
 import { SHARE_CARD_VERSION, SHARE_FORMATS, type ShareFormat, type ShareVariant } from "@/lib/share-card";
 
-type ReportView = { id: string; url: string; finalUrl?: string; title?: string; description?: string; lighthouse?: LighthouseReport; aiCrawlerReport?: AiCrawlerReport; linkedPages?: LinkedPageAudit[]; sharePreview?: { title: string; description: string }; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; createdAt?: string };
+type ReportView = { id: string; url: string; finalUrl?: string; title?: string; description?: string; lighthouse?: LighthouseReport; aiCrawlerReport?: AiCrawlerReport; linkedPages?: LinkedPageAudit[]; sharePreview?: { title: string; description: string }; shareImageAvailable?: boolean; checks?: Record<string, MetricCheck>; createdAt?: string; engines?: EngineCoverage[] };
 const strategies = [["performance", "Performance"], ["accessibility", "Accessibility"], ["bestPractices", "Best Practices"], ["seo", "SEO"]] as const;
 const displayCheck = (value?: { state?: string; value?: number | string }, unit = "") => value?.state === "checked" && value.value !== undefined ? `${value.value}${unit}` : "Unavailable";
 const displayMetric = (value?: MetricCheck, unit = "") => value?.state === "checked" && value.value !== undefined ? `${value.value}${typeof value.value === "number" ? unit : ""}` : "Unavailable";
@@ -17,26 +18,57 @@ const browserTiming = (value?: MetricCheck, positive = true) => {
 };
 const crawlerPolicyLabels: Record<AiCrawlerReport["policies"][number]["policy"], string> = { blocked: "Blocked by matching rule", allowed: "Allowed by matching rule", no_matching_rule: "No matching rule", unknown: "Unknown" };
 const preferenceLabels: Record<AiCrawlerReport["preferences"][number]["status"], string> = { blocked: "Disallowed for this path", allowed: "Allowed for this path", not_declared: "No matching declaration", unknown: "Unknown" };
+const engineNames: Record<EngineId, string> = {
+  performance: "Performance", accessibility: "Accessibility", seo: "Search signals",
+  security: "Public security signals", links: "Link integrity", markup: "HTML structure",
+  functionality: "Browser functionality", launch: "Launch readiness",
+};
+const coverageLabels: Record<EngineCoverage["status"], string> = {
+  passed: "Checked", issues: "Issues detected", not_applicable: "Not applicable",
+  incomplete: "Partial", unavailable: "Unavailable", manual: "Manual review",
+};
+const opportunityNames: Record<string, string> = {
+  "render-blocking-resources": "Render-blocking resources", "render-blocking-insight": "Render-blocking resources",
+  "unused-javascript": "Unused JavaScript", "unused-css-rules": "Unused CSS",
+  "uses-optimized-images": "Image optimization", "image-delivery-insight": "Image delivery", "total-byte-weight": "Page weight",
+};
 export function TechnicalReportSections({ scan, onRetryLighthouse }: { scan: ReportView; onRetryLighthouse: (strategy: "mobile" | "desktop") => Promise<string | null> }) {
   const [strategy, setStrategy] = useState<"mobile" | "desktop">("mobile");
   const [retrying, setRetrying] = useState(false);
   const [retryFailed, setRetryFailed] = useState(false);
   const [retryMessage, setRetryMessage] = useState("");
   const lighthouse = scan.lighthouse?.[strategy];
-  const lighthouseUnavailable = !lighthouse || [...Object.values(lighthouse)].every((metric) => metric.state === "unknown");
-  const lighthouseHasUnknown = !lighthouse || Object.values(lighthouse).some((metric) => metric.state === "unknown");
-  const lighthouseNote = Object.values(lighthouse ?? {}).find((metric) => metric.state === "unknown" && metric.note)?.note;
+  const lighthouseUnavailable = !lighthouse || lighthouseChecks(lighthouse).every((metric) => metric.state === "unknown");
+  const lighthouseHasUnknown = !lighthouse || lighthouseChecks(lighthouse).some((metric) => metric.state === "unknown");
+  const lighthouseNote = lighthouseChecks(lighthouse).find((metric) => metric.state === "unknown" && metric.note)?.note;
   const crawlerCounts = scan.aiCrawlerReport?.policies.reduce((counts, bot) => ({ ...counts, [bot.policy]: counts[bot.policy] + 1 }), { allowed: 0, blocked: 0, no_matching_rule: 0, unknown: 0 });
   async function retryLighthouse() { setRetrying(true); setRetryFailed(false); setRetryMessage(""); const message = await onRetryLighthouse(strategy); setRetryMessage(message ?? ""); setRetrying(false); setRetryFailed(Boolean(message)); }
 
   return <>
+    {Boolean(scan.engines?.length) && <section className="wrap depth-section" aria-labelledby="engine-coverage">
+      <div className="report-section-title"><h2 id="engine-coverage">What the scan checked.</h2></div>
+      <details className="ai-crawler-detail">
+        <summary>View coverage by engine</summary>
+        <ul>{scan.engines?.map(({ id, version, status, note }) => <li key={id}>
+          <strong>{engineNames[id]} · {coverageLabels[status]}</strong> <span className="mono">{version}</span>
+          {note && <p className="coverage-note">{note}</p>}
+        </li>)}</ul>
+      </details>
+    </section>}
     <section className="wrap depth-section lighthouse-section" data-category="technical" aria-labelledby="lighthouse-title">
       <div className="report-section-title"><h2 id="lighthouse-title">Performance evidence.</h2><span className="mono">{scan.lighthouse?.source ?? "Google PageSpeed Insights"} · lab run · {scan.createdAt ? new Date(scan.createdAt).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "time unavailable"}</span></div><p className="coverage-note">Lighthouse scores are out of 100 for the selected device. One lab run cannot predict every visitor experience.</p>
       <div className="lighthouse-toggle" role="group" aria-label="Lighthouse device strategy">{(["mobile", "desktop"] as const).map((name) => <button type="button" key={name} aria-pressed={strategy === name} className={strategy === name ? "active" : ""} onClick={() => setStrategy(name)}>{name}</button>)}</div>
       <GlassCard className="lighthouse-glass" shellClassName="lighthouse-glass-shell">
       {lighthouseUnavailable ? <div className="lighthouse-unavailable"><div><p className="mono">{strategy} PageSpeed metrics are unavailable.</p><p>{lighthouseNote ?? "No result was recorded for this strategy. Retry to request fresh measurements."}</p></div><button className="inline-unlock" type="button" onClick={() => void retryLighthouse()} disabled={retrying}>{retrying ? "Retrying…" : "Retry Lighthouse"}</button>{retryFailed && <span className="mono" role="status">{retryMessage || "PageSpeed could not return results. Try again later."}</span>}</div> : <>
         <div className="lighthouse-scores" aria-label={`${strategy} Lighthouse scores`}>{strategies.map(([key, label]) => <div className="lighthouse-score" key={key}><span className="mono">{label}</span><strong className="mono">{displayCheck(lighthouse?.[key])}</strong></div>)}</div>
-        <div className="vitals-row"><div><span className="mono">LCP</span><strong className="mono">{displayMetric(lighthouse?.lcp, " ms")}</strong></div><div><span className="mono">CLS</span><strong className="mono">{displayMetric(lighthouse?.cls)}</strong></div><div><span className="mono">INP / TBT</span><strong className="mono">{displayMetric(lighthouse?.inpTbt, " ms")}</strong></div></div>
+        <div className="vitals-row"><div><span className="mono">LCP</span><strong className="mono">{displayMetric(lighthouse?.lcp, " ms")}</strong></div><div><span className="mono">CLS</span><strong className="mono">{displayMetric(lighthouse?.cls)}</strong></div><div><span className="mono">{lighthouse?.lab ? "TBT" : "INP / TBT"}</span><strong className="mono">{displayMetric(lighthouse?.inpTbt, " ms")}</strong></div></div>
+        {lighthouse?.lab && <details className="ai-crawler-detail">
+          <summary>More lab measurements</summary>
+          <p>First Contentful Paint {displayMetric(lighthouse.lab.fcp, " ms")} · Speed Index {displayMetric(lighthouse.lab.speedIndex, " ms")}</p>
+          {Boolean(lighthouse.lab.opportunities.length) && <ul>{lighthouse.lab.opportunities.map(({ ruleId, estimatedMs }) => <li key={ruleId}>
+            {opportunityNames[ruleId] ?? ruleId} · estimated lab savings {estimatedMs} ms
+          </li>)}</ul>}
+        </details>}
         {lighthouseHasUnknown && <div className="lighthouse-metric-retry"><span className="mono">Some Lighthouse metrics are unavailable.</span><button className="inline-unlock" type="button" onClick={() => void retryLighthouse()} disabled={retrying}>{retrying ? "Retrying…" : "Retry Lighthouse"}</button>{retryFailed && <span className="mono" role="status">{retryMessage || "PageSpeed could not return results. Try again later."}</span>}</div>}
       </>}
       </GlassCard>

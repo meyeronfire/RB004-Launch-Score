@@ -1,5 +1,6 @@
 "use client";
 
+import { lighthouseChecks } from "@/lib/lighthouse-fields";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -30,7 +31,6 @@ const categoryOrder = Object.keys(CATEGORY_WEIGHTS) as Category[];
 const toolId = (name: string) => `prompt-tab-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 const scoreDisplay = (score?: number) => typeof score === "number" ? String(score).padStart(2, "0") : "—";
 const formatUtc = (value?: string, options?: Intl.DateTimeFormatOptions) => value ? `${new Date(value).toLocaleString("en-GB", { ...options, timeZone: "UTC" })} UTC` : "Time unavailable";
-const scanSteps = ["Checking scan permissions…", "Rendering the desktop page…", "Rendering the mobile page…", "Checking links and page signals…", "Preparing the evidence-led report…", "Reviewing visual design…"];
 function examplePaidData() {
   const findings = exampleReport.findings ?? [];
   const copyDrafts = { status: "Page-copy drafts were not generated for this historical sample scan.", headlines: [] as string[], subheadline: "", cta: "", faq: "", metaTitle: "", metaDescription: "" };
@@ -119,7 +119,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
     return () => cancelAnimationFrame(frame);
   }, [completed, scan.score]);
   const contentUnavailable = !scan.checks?.contentReview || scan.checks.contentReview.state === "unknown";
-  const speedUnavailable = !scan.lighthouse || [...Object.values(scan.lighthouse.mobile), ...Object.values(scan.lighthouse.desktop)].every((metric) => metric.state === "unknown");
+  const speedUnavailable = !scan.lighthouse || [...lighthouseChecks(scan.lighthouse.mobile), ...lighthouseChecks(scan.lighthouse.desktop)].every((metric) => metric.state === "unknown");
   const partial = contentUnavailable || speedUnavailable || Object.values(scan.categoryCoverage ?? {}).some((coverage) => coverage < 1);
   const prompt = paidData?.prompts[tool] ?? "";
   async function copyLink() {
@@ -214,13 +214,19 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   const remainingRecommendations = visibleRecommendations.slice(3);
   const reportCounts = { checksRun: checkCounts.pass + checkCounts.issue, passed: checkCounts.pass, issues: checkCounts.issue };
   const unscoredCategories = categoryOrder.filter((key) => typeof scan.categoryScores?.[key] !== "number");
-  const currentStep = scanSteps.indexOf(scan.phase);
+  const completedPhases = (scan.phaseHistory ?? []).filter((phase) => phase !== scan.phase);
 
   return <main className="report-page">
     <ScrollReveal selectors=".depth-section, .categories-section, .findings-section, .capture-section, .category-row, .check-evidence > div, .finding-glass-shell, .speed-insights > div" />
     <header className="wrap masthead"><Link className="brand" href="/" aria-label="Ready for Real home"><Image className="brand-icon" src="/r4r-logo.jpg" alt="" width={40} height={40} priority /><span className="brand-name">Ready for Real<span className="brand-dot">.</span></span><span className="brand-sub">Launch Readiness</span></Link><span className="mast-meta">{scan.domain ?? "PAGE REVIEW"}</span></header>
     {paidPreview && <p className="wrap coverage-note"><strong>NO-CHARGE PAID-PAGE PREVIEW · HISTORICAL REGULARBASIS.STUDIO SCAN</strong><br/>Demo based on a scan from 31 October 2026. No real purchase or report access is changed.</p>}
-    {!completed && scan.status !== "failed" && <section className="wrap scan-progress" aria-live="polite"><div className="scan-progress-ring" role="img" aria-label={`Scan step ${currentStep < 0 ? 0 : currentStep + 1} of ${scanSteps.length}`}><svg viewBox="0 0 72 72" aria-hidden="true"><circle className="progress-ring-track" cx="36" cy="36" r="31"/><circle className="progress-ring-value" cx="36" cy="36" r="31" strokeDasharray="195 195" strokeDashoffset={195 * (1 - (currentStep + 1) / scanSteps.length)}/></svg><span className="mono">{currentStep < 0 ? 0 : currentStep + 1}<small>/{scanSteps.length}</small></span></div><h1>{scan.phase}</h1><p>Rendering the live page and checking the details we can verify.</p><ol className="progress-log">{scanSteps.map((phase, index) => <li className={`${index < currentStep ? "done" : ""} ${index === currentStep ? "active" : ""} mono`} key={phase}>{index === currentStep && <span className="live-dot" aria-hidden="true"/>}{phase}</li>)}</ol></section>}
+    {!completed && scan.status !== "failed" && <section className="wrap scan-progress" aria-live="polite">
+      <h1>{scan.phase}</h1>
+      <ol className="progress-log">
+        {completedPhases.map((phase) => <li className="done mono" key={phase}>{phase}</li>)}
+        <li className="active mono" aria-current="step"><span className="live-dot" aria-hidden="true"/>{scan.phase}</li>
+      </ol>
+    </section>}
     {scan.status === "failed" && <section className="wrap scan-progress scan-failed"><span className="mono progress-label">SCAN STOPPED</span><h1>This page could not be reviewed.</h1><p>{scan.error ?? "The page could not be reached. Check the URL and try again."}</p><ScanForm initialUrl={scan.url} submitLabel="Retry scan" /><Link className="text-link" href="/">Try a different page →</Link></section>}
     {completed && <>
       <section className="wrap report-hero">

@@ -145,11 +145,19 @@ export function publicScan(scan: ScanRecord) {
   if (!checkoutConfigured && !stripeWarningLogged) { console.warn("Paid unlock is hidden because checkout dependencies are not fully configured."); stripeWarningLogged = true; }
   const allFindings = safe.findings ?? [];
   const publicFindings = allFindings.slice(0, 3);
-  const additionalFindings = allFindings.slice(3).map(({ id, code, category, section, severity, title, why_it_matters, evidence }) => ({
+  const findingProvenance = (finding: (typeof allFindings)[number]) => ({
+    confidence: finding.confidence,
+    sources: finding.sources?.map(({ engine, version, ruleId }) => ({ engine, version, ruleId })),
+  });
+  const additionalFindings = allFindings.slice(3).map((finding) => {
+    const { id, code, category, section, severity, title, why_it_matters, evidence } = finding;
+    return {
+    ...findingProvenance(finding),
     id, code, category, section: section ?? "other", severity, title,
     why_it_matters: why_it_matters.length > 240 ? `${why_it_matters.slice(0, 240)}…` : why_it_matters,
     evidence: evidence.length > 240 ? `${evidence.slice(0, 240)}…` : evidence,
-  }));
+    };
+  });
   const publicScoreBreakdown = safe.scoreBreakdown ? { ...safe.scoreBreakdown, top: [] } : undefined;
   return { ...safe,
     paidAvailable: Boolean(scan.paidPayload?.available),
@@ -157,7 +165,10 @@ export function publicScan(scan: ScanRecord) {
     paidRescanAvailable: false,
     checkoutAvailable: Boolean(scan.paidPayload?.available && checkoutConfigured),
     shareImageAvailable: Boolean(scan.shareImageUrl),
-    findings: publicFindings.map(({ id, code, category, section, severity, title, why_it_matters, evidence }) => ({ id, code, category, section: section ?? "other", severity, title, why_it_matters, evidence: evidence.length > 200 ? `${evidence.slice(0, 200)}…` : evidence })),
+    findings: publicFindings.map((finding) => {
+      const { id, code, category, section, severity, title, why_it_matters, evidence } = finding;
+      return { ...findingProvenance(finding), id, code, category, section: section ?? "other", severity, title, why_it_matters, evidence: evidence.length > 200 ? `${evidence.slice(0, 200)}…` : evidence };
+    }),
     additionalFindings,
     scoreBreakdown: publicScoreBreakdown,
     findingCounts,

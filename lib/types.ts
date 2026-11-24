@@ -1,7 +1,23 @@
 export type Category = "clarity" | "conversion" | "design_brand" | "trust" | "technical" | "security" | "seo_aeo";
 export type Severity = "critical" | "high" | "medium" | "low";
 export type FindingSection = "security" | "seo" | "leftovers" | "forms" | "technical" | "design" | "other";
-export type Finding = { id: string; code?: string; category: Category; section?: FindingSection; severity: Severity; confidence?: "confirmed" | "review" | "unknown"; title: string; why_it_matters: string; evidence: string; fix: string };
+export type EngineId = "performance" | "accessibility" | "seo" | "security" | "links" | "markup" | "functionality" | "launch";
+export type EngineCoverage = {
+  id: EngineId;
+  version: string;
+  status: "passed" | "issues" | "not_applicable" | "incomplete" | "unavailable" | "manual";
+  durationMs: number;
+  note?: string;
+};
+export type FindingSource = {
+  engine: EngineId;
+  version: string;
+  ruleId: string;
+  elements?: Array<{ selector?: string; snippet?: string; detail?: string }>;
+  measured?: string | number;
+  expected?: string | number;
+};
+export type Finding = { id: string; code?: string; category: Category; section?: FindingSection; severity: Severity; confidence?: "confirmed" | "review" | "unknown"; title: string; why_it_matters: string; evidence: string; fix: string; affectedUrl?: string; fingerprint?: string; observedAt?: string; verification?: "observed" | "manual" | "unknown"; sources?: FindingSource[] };
 export type DesignDimensions = { visualHierarchy: number; typography: number; spacingRhythm: number; paletteContrast: number; brandConsistency: number; genericSignals: number };
 export type DesignReview = { state: "checked" | "unknown"; dimensions?: DesignDimensions; score?: number; note?: string };
 export type VisualSample = { device: "Desktop" | "Mobile"; section: string; tag: string; text: string; fontFamily: string; fontSize: number; lineHeight: string; fontWeight: string; color: string; background: string; spacing: string; backgroundImage: string; classes: string; alt: string };
@@ -12,7 +28,7 @@ export type AiCrawlerPolicy = { name: string; userAgent: string; purpose: string
 export type AiCrawlerPreference = { signal: string; label: string; status: "blocked" | "allowed" | "not_declared" | "unknown"; matchedRules: Array<{ directive: "allow" | "disallow"; path: string }> };
 export type AiCrawlerReport = { state: "checked" | "unknown"; robotsUrl?: string; fetchedAt: string; policies: AiCrawlerPolicy[]; preferences: AiCrawlerPreference[]; note: string };
 export type LinkedPageAudit = { path: string; state: "checked" | "unknown"; status?: number; title?: string; descriptionPresent?: boolean; h1Count?: number; imageCount?: number; imagesMissingAlt?: number; noindex?: boolean; note?: string };
-export type LighthouseStrategy = { performance: MetricCheck; accessibility: MetricCheck; bestPractices: MetricCheck; seo: MetricCheck; lcp: MetricCheck; cls: MetricCheck; inpTbt: MetricCheck };
+export type LighthouseStrategy = { performance: MetricCheck; accessibility: MetricCheck; bestPractices: MetricCheck; seo: MetricCheck; lcp: MetricCheck; cls: MetricCheck; inpTbt: MetricCheck; lab?: { version?: string; fcp: MetricCheck; speedIndex: MetricCheck; opportunities: Array<{ ruleId: string; estimatedMs?: number }> }; };
 export type LighthouseReport = { mobile: LighthouseStrategy; desktop: LighthouseStrategy; source: "via Google PageSpeed Insights" };
 export type CaptureSegment = { image: string; top: number; width: number; height: number };
 export type FindingMarker = { findingId: string; number: number; desktop?: { x: number; y: number; segmentIndex?: number }; mobile?: { x: number; y: number; segmentIndex?: number } };
@@ -28,6 +44,7 @@ export type ScanRecord = {
   categoryCoverage?: Partial<Record<Category, number>>;
   checks?: Record<string, MetricCheck>; desktopImage?: string; mobileImage?: string;
   lighthouse?: LighthouseReport;
+  engines?: EngineCoverage[];
   aiCrawlerReport?: AiCrawlerReport;
   linkedPages?: LinkedPageAudit[];
   annotatedCapture?: AnnotatedCapture;

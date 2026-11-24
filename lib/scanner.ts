@@ -1,14 +1,24 @@
 import { randomUUID } from "node:crypto";
+import { performance as workerClock } from "node:perf_hooks";
+import { runEngine, combineFindings } from "./scan-engines/engine";
+import { accessibility } from "./scan-engines/accessibility";
+import { isLinkProbeCandidate, linkIntegrity, linkState } from "./scan-engines/link-integrity";
+export { summarizeLinkStatuses } from "./scan-engines/link-integrity";
+import { missingPsiStrategy, performanceEngine } from "./scan-engines/lighthouse";
+export { psiMetrics } from "./scan-engines/lighthouse";
+import { markup } from "./scan-engines/markup";
+import { functionalityEngine, launchEngine, securityEngine, seoEngine } from "./scan-engines/observations";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { imageSize } from "image-size";
 import { safeFetch, normalizePublicUrl, SafeFetchError, UnsafeTargetError, currentScanSignal, withScanSignal } from "./ssrf";
 import { dedupeFindings, makeFinding, rankFindings } from "./score";
 import { failScanAndReleasePaidRescan, findCachedScan, readScan, saveScan, updateScan } from "./store";
-import type { Finding, MetricCheck, ScanRecord } from "./types";
+import type { EngineCoverage, Finding, MetricCheck, ScanRecord } from "./types";
 import { contentReviewCheck, reviewContent } from "./content-review";
 import { buildAiCrawlerReport } from "./ai-crawler-report";
 import { isRobotsDisallowed } from "./robots";
 export { isRobotsDisallowed } from "./robots";
+import { hasAutomatedAccessibility } from "./lighthouse-fields";
 import { scoreLighthouseAudit } from "./lighthouse-scoring";
 import { reviewDesign } from "./design-review";
 import { auditDesignSignals } from "./design-audit";
@@ -169,7 +179,7 @@ export async function pageSnapshot(page: Page) {
       appleTouchIcon: document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')?.href ?? "",
       lang: html.lang, viewport: meta("viewport"), h1: h1?.textContent?.trim().replace(/\s+/g, " ") ?? "", h1Visible: h1 ? visible(h1) : false,
       text: (document.body.innerText || "").replace(/\s+/g, " ").slice(0, 18_000), aboveFoldText: [...document.body.querySelectorAll("h1,h2,p,a,button")].filter(visible).filter((e) => e.getBoundingClientRect().top < innerHeight).map((e) => (e.textContent || "").trim()).join(" ").slice(0, 3500),
-      ctas, links: anchors.map((a) => a.href).filter(Boolean).slice(0, 50), imageCount: images.length, imageAltCount: images.filter((i) => i.hasAttribute("alt") && i.alt.trim().length > 0).length,
+      ctas, links: anchors.map((a) => a.href).filter(Boolean).slice(0, 50), imageCount: images.length, imageAltCount: images.filter((image) => image.hasAttribute("alt")).length,
       h1Count: document.querySelectorAll("h1").length, headings, headingOrderProblems, hreflang, jsonLd: { total: structuredData.length, valid: structuredData.filter(Boolean).length, invalid: structuredData.filter((value) => !value).length },
       forms, primaryCtas, scriptUrls, imageUrls: images.map((image) => image.currentSrc || image.src).filter(Boolean).slice(0, 80), mixedContent,
       placeholderLinks, testimonialBlocks,
@@ -250,9 +260,10 @@ function stackHints(html: string) {
   return tests.filter(([, pattern]) => pattern.test(html)).map(([name]) => name);
 }
 
-async function pageCapture(context: BrowserContext, url: string, mobile: boolean, requestCounter: { count: number; bytes: number; active: number; waiting: Array<() => void>; buckets: Record<"script" | "style" | "image" | "font" | "other", number>; largest: Array<{ url: string; bytes: number; type: string }> }, budget: ScanRequestBudget, restrictOwnerNavigation = false) {
+async function pageCapture(context: BrowserContext, url: string, mobile: boolean, requestCounter: { count: number; bytes: number; active: number; waiting: Array<() => void>; buckets: Record<"script" | "style" | "image" | "font" | "other", number>; largest: Array<{ url: string; bytes: number; type: string }> }, budget: ScanRequestBudget, restrictOwnerNavigation = false, auditAccessibility?: (page: Page, rendered: boolean) => Promise<void>) {
   let renderPass: "full" | "static" = "full";
   let documentRequests = 0;
+  const failedAssets = new Map<string, { kind: string; status: number }>();
   await context.route("**/*", async (route) => {
     const request = route.request(); const target = request.url();
     if (["data:", "blob:", "about:"].some((prefix) => target.startsWith(prefix))) return route.continue();
@@ -276,6 +287,12 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
         await assertRobotsAllows(redirect);
       };
       const response = await safeFetch(target, { timeoutMs: 5_000, maxBytes: 1_500_000, maxRedirects: 3, beforeRedirect, budget });
+      const type = request.resourceType();
+      if (renderPass === "full" && response.redirects.length === 0 && new URL(target).origin === new URL(url).origin &&
+        ["script", "stylesheet", "image"].includes(type) && (!new URL(target).search) &&
+        ["missing", "server_error"].includes(linkState(response.status)) && failedAssets.size < 12) {
+        failedAssets.set(new URL(target).pathname, { kind: type, status: response.status });
+      }
       if (response.redirects.length) return route.fulfill({ status: 302, headers: { location: response.redirects[0] } });
       if (requestCounter.bytes + response.body.length > 16_000_000) return route.abort("blockedbyclient");
       requestCounter.bytes += response.body.length;
@@ -343,7 +360,9 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
         return { dcl: Math.round(nav?.domContentLoadedEventEnd ?? 0), load: Math.round(nav?.loadEventEnd ?? 0), fcp: Math.round(paints.find((paint) => paint.name === "first-contentful-paint")?.startTime ?? 0), lcp: Math.round(rb?.lcp ?? 0), cls: Math.round((rb?.cls ?? 0) * 1000) / 1000, resources: res.length, scripts: res.filter((entry) => entry.initiatorType === "script").length, thirdPartyOrigins: thirdParty.size, transferKB: Math.round(res.reduce((sum, entry) => sum + (entry.encodedBodySize || 0), 0) / 1024) };
       });
     } catch { /* Speed metrics are best-effort. */ }
-    return { responseStatus: response.status(), currentUrl: page.url(), snapshot: await pageSnapshot(page), screenshot: asDataUrl(screenshot), fullPageScreenshot: fullPageBuffer ? asDataUrl(fullPageBuffer) : undefined, fullPageSize: fullPageSize ? { width: fullPageSize.width, height: fullPageSize.height } : undefined, screenshotSegments, consoleErrors, consoleMessages, speed, scriptsExecuted: renderPass === "full" };
+    const snapshot = await pageSnapshot(page);
+    await auditAccessibility?.(page, renderPass === "full");
+    return { responseStatus: response.status(), currentUrl: page.url(), snapshot, failedAssets: [...failedAssets.entries()], screenshot: asDataUrl(screenshot), fullPageScreenshot: fullPageBuffer ? asDataUrl(fullPageBuffer) : undefined, fullPageSize: fullPageSize ? { width: fullPageSize.width, height: fullPageSize.height } : undefined, screenshotSegments, consoleErrors, consoleMessages, speed, scriptsExecuted: renderPass === "full" };
   } catch (error) {
     lastRenderError = error;
     if (error instanceof SafeFetchError || error instanceof UnsafeTargetError || attempt === 1 || !recoverableRenderFailure(error)) break;
@@ -361,77 +380,20 @@ async function pageCapture(context: BrowserContext, url: string, mobile: boolean
   } finally { await context.unrouteAll({ behavior: "ignoreErrors" }); }
 }
 
-export function summarizeLinkStatuses(statuses: Array<number | undefined>) {
-  return { checked: statuses.filter((status): status is number => status !== undefined).length, brokenCount: statuses.filter((status) => status !== undefined && status >= 400).length, unknownCount: statuses.filter((status) => status === undefined).length };
-}
-
-async function checkStatus(urls: string[]) {
-  const unique = [...new Set(urls)].slice(0, 8); const results: Array<{ url: string; status?: number }> = [];
-  for (let i = 0; i < unique.length; i += 8) {
-    const batch = unique.slice(i, i + 8);
-    const completed = await Promise.all(batch.map(async (url) => {
-      try { const target = normalizePublicUrl(url); await assertRobotsAllows(target); const result = await safeFetch(url, { timeoutMs: 3000, maxRedirects: 3, beforeRedirect: assertRobotsAllows, statusOnly: true }); return { url, status: result.status }; }
-      catch { return { url, status: undefined }; }
-    }));
-    results.push(...completed);
-  }
-  const summary = summarizeLinkStatuses(results.map((item) => item.status));
-  return { unique, checked: summary.checked, broken: results.filter((item) => item.status !== undefined && item.status >= 400).map((item) => item.url), unknownCount: summary.unknownCount, statusByUrl: new Map(results.map((item) => [item.url, item.status])) };
-}
-
-type PsiStrategy = import("./types").LighthouseStrategy;
-const missingPsiStrategy = (note: string): PsiStrategy => ({ performance: unknown(note), accessibility: unknown(note), bestPractices: unknown(note), seo: unknown(note), lcp: unknown(note), cls: unknown(note), inpTbt: unknown(note) });
-const PAGESPEED_TIMEOUT_MS = 100_000;
-export async function psiMetrics(url: string, strategy: "mobile" | "desktop") {
-  const apiKey = process.env.PAGESPEED_API_KEY;
-  if (!apiKey) {
-    console.warn("PageSpeed Insights is unavailable: PAGESPEED_API_KEY is not configured.");
-    return missingPsiStrategy("PageSpeed Insights is not configured for this scan.");
-  }
-  for (let attempt = 1; attempt <= 2; attempt++) try {
-    if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 650));
-    const endpoint = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
-    endpoint.searchParams.set("url", url); endpoint.searchParams.set("strategy", strategy); endpoint.searchParams.set("key", apiKey);
-    for (const category of ["PERFORMANCE", "ACCESSIBILITY", "BEST_PRACTICES", "SEO"]) endpoint.searchParams.append("category", category);
-    const response = await safeFetch(endpoint.toString(), { timeoutMs: PAGESPEED_TIMEOUT_MS, maxBytes: 1_500_000, maxRedirects: 0 });
-    if (response.status < 200 || response.status >= 300) {
-      let apiMessage = "";
-      try { apiMessage = String((JSON.parse(response.body.toString("utf8")) as { error?: { status?: string; message?: string } }).error?.message ?? ""); } catch { /* Keep status as the diagnostic when the provider response is not JSON. */ }
-      const detail = apiMessage.replace(/([?&]key=)[^&\s]+/gi, "$1[redacted]").replace(/https?:\/\/\S+/gi, "[url]").replace(/AIza[\w-]{20,}/g, "[redacted]").slice(0, 200);
-      throw new Error(`HTTP ${response.status}${detail ? ` · ${detail}` : ""}`);
-    }
-    const data = JSON.parse(response.body.toString("utf8")) as { lighthouseResult?: { categories?: Record<string, { score?: number | null }>; audits?: Record<string, { numericValue?: number; displayValue?: string }> } };
-    const categories = data.lighthouseResult?.categories ?? {};
-    const audits = data.lighthouseResult?.audits ?? {};
-    const category = (key: string): MetricCheck => categories[key]?.score != null ? { state: "checked", value: Math.round((categories[key].score ?? 0) * 100) } : unknown(`PageSpeed Insights did not return the ${key} score for ${strategy}.`);
-    const audit = (keys: string[]): MetricCheck => {
-      const match = keys.map((key) => audits[key]).find((value) => value && (value.displayValue || value.numericValue !== undefined));
-      if (!match) return unknown("PageSpeed Insights did not return this metric.");
-      return { state: "checked", value: match.displayValue ?? match.numericValue ?? "Checked" };
-    };
-    return { performance: category("performance"), accessibility: category("accessibility"), bestPractices: category("best-practices"), seo: category("seo"),
-      lcp: audit(["largest-contentful-paint"]), cls: audit(["cumulative-layout-shift"]), inpTbt: audit(["interaction-to-next-paint", "experimental-interaction-to-next-paint", "total-blocking-time"]) };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message.replace(/([?&]key=)[^&\s]+/gi, "$1[redacted]").replace(/([?&]url=)[^&\s]+/gi, "$1[redacted]").slice(0, 180) : "Unknown error";
-    console.error("PageSpeed Insights API error", { strategy, attempt, error: detail });
-    if (currentScanSignal()?.aborted) return missingPsiStrategy(`PageSpeed Insights was cancelled when the scan ended during the ${strategy} run.`);
-    const timedOut = error instanceof Error && /too long to respond|exceeded its time limit/i.test(error.message);
-    if (timedOut || attempt === 2) return missingPsiStrategy(timedOut
-      ? `PageSpeed Insights timed out during the ${strategy} run. Retry Lighthouse to try again.`
-      : `PageSpeed Insights could not complete the ${strategy} run.`);
-  }
-  return missingPsiStrategy("PageSpeed Insights did not return a result.");
-}
-
-async function processScanCore(id: string, leaseToken?: string) {
+async function processScanCore(id: string, leaseToken?: string, shutdown?: AbortSignal) {
   if (running.has(id)) return;
   running.add(id);
+  const startedAt = workerClock.now();
+  const startedRss = process.memoryUsage.rss();
+  const engineCoverage: EngineCoverage[] = [];
   let lighthouseController: AbortController | undefined;
   let browserMs = 0; let modelInputTokens = 0; let modelOutputTokens = 0; let scanModel = "";
   try {
     const scan = await readScan(id); if (!scan || scan.status === "complete") return;
     const requestBudget = currentRequestBudget() ?? new ScanRequestBudget();
     const target = normalizePublicUrl(scan.url);
+    const observedAt = now();
+    const scanSignal = currentScanSignal();
     await phase(id, "Checking scan permissions…", leaseToken);
     const policy = await inspectRobots(target);
     if (policy.robots.state === "unknown") throw new SafeFetchError("Could not confirm the page’s robots.txt rules, so the scan stopped safely. Try again later.");
@@ -460,7 +422,10 @@ async function processScanCore(id: string, leaseToken?: string) {
     const lighthouseSignal = scanSignalForPageSpeed
       ? AbortSignal.any([scanSignalForPageSpeed, lighthouseController.signal])
       : lighthouseController.signal;
-    const lighthousePromise = keepPromiseObserved(withScanSignal(lighthouseSignal, () => Promise.all([psiMetrics(finalUrl.toString(), "mobile"), psiMetrics(finalUrl.toString(), "desktop")])));
+    const lighthousePromise = keepPromiseObserved(runEngine(performanceEngine, finalUrl.toString(), lighthouseSignal));
+    const markupPromise = keepPromiseObserved(runEngine(markup, {
+      html: initial.body.toString("utf8"), url: finalUrl.toString(), date: observedAt,
+    }, scanSignal));
     let html = initial.body.toString("utf8");
     const signal = currentScanSignal();
     const launching = chromium.launch(await browserLaunchOptions());
@@ -475,6 +440,7 @@ async function processScanCore(id: string, leaseToken?: string) {
     const counter = { count: 0, bytes: 0, active: 0, waiting: [] as Array<() => void>, buckets: { script: 0, style: 0, image: 0, font: 0, other: 0 }, largest: [] as Array<{ url: string; bytes: number; type: string }> };
     const browserStartedAt = Date.now();
     let desktop; let mobile;
+    let accessibilityFindings: Finding[] = [];
     try {
       const desktopContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, ignoreHTTPSErrors: false, serviceWorkers: "block" });
       // esbuild (tsx) injects __name() into functions passed to page.evaluate; define it in the page context.
@@ -486,7 +452,16 @@ async function processScanCore(id: string, leaseToken?: string) {
       const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, ignoreHTTPSErrors: false, serviceWorkers: "block" });
       await mobileContext.addInitScript("window.__name = function(fn, name) { try { Object.defineProperty(fn, \"name\", { value: name, configurable: true }); } catch (e) {} return fn; };");
       await mobileContext.routeWebSocket("**/*", (socket) => socket.close({ code: 1008, reason: "WebSockets are disabled during scanning." }));
-      mobile = await pageCapture(mobileContext, finalUrl.toString(), true, counter, requestBudget, restrictOwnerNavigation); await mobileContext.close();
+      mobile = await pageCapture(mobileContext, finalUrl.toString(), true, counter, requestBudget, restrictOwnerNavigation, async (page, rendered) => {
+        if (process.env.SCAN_AXE_ENABLED !== "1") {
+          engineCoverage.push({ id: "accessibility", version: "axe-core", status: "unavailable", durationMs: 0, note: "axe-core is disabled on this worker." });
+          return;
+        }
+        await phase(id, "Testing accessibility…", leaseToken);
+        const result = await runEngine(accessibility, { page, url: finalUrl.toString(), date: observedAt, viewport: "mobile", rendered }, signal);
+        engineCoverage.push(result.coverage);
+        accessibilityFindings = result.value?.findings ?? [];
+      }); await mobileContext.close();
     } finally { signal?.removeEventListener("abort", closeBrowser); browserMs += Date.now() - browserStartedAt; await browser.close(); }
     if (signal?.aborted) throw new SafeFetchError(scanTimeLimitMessage(true));
     const snap = desktop.snapshot; const mobileSnap = mobile.snapshot;
@@ -495,17 +470,34 @@ async function processScanCore(id: string, leaseToken?: string) {
     await phase(id, "Checking links and page signals…", leaseToken);
     const sameOriginLinks = snap.links.filter((href: string) => { try { return new URL(href).origin === origin && new URL(href).pathname !== pageUrl.pathname; } catch { return false; } });
     const hreflangLinks = snap.hreflang.map((item: { href: string }) => item.href);
-    const formActionLinks = snap.forms.map((form: { action: string }) => form.action ? new URL(form.action, finalUrl).toString() : "").filter(Boolean);
     const primaryTargets = snap.primaryCtas.map((cta: { href: string }) => cta.href).filter(Boolean);
-    const auditTargets = [...primaryTargets, ...formActionLinks, ...hreflangLinks, ...sameOriginLinks];
-    const linkResult = await checkStatus(auditTargets);
+    const beforeLinkRedirect = async (redirect: URL) => {
+      if (!isLinkProbeCandidate(redirect)) throw new SafeFetchError("The redirect destination was outside the link review scope.");
+      await assertRobotsAllows(redirect);
+    };
+    const linkSample = await runEngine(linkIntegrity, {
+      entryUrl: finalUrl.toString(), date: observedAt,
+      targets: [...primaryTargets.map((url: string) => ({ url, priority: true })),
+        ...[...sameOriginLinks, ...hreflangLinks, ...snap.links].map((url) => ({ url, priority: false }))],
+      probe: async (url) => {
+        try {
+          await assertRobotsAllows(normalizePublicUrl(url));
+          const result = await safeFetch(url, { timeoutMs: 3000, maxRedirects: 3, beforeRedirect: beforeLinkRedirect, statusOnly: true, method: "HEAD" });
+          return { status: result.status, redirects: result.redirects.length };
+        } catch (error) {
+          return { redirectLimit: error instanceof SafeFetchError && /redirected too many times/.test(error.message) };
+        }
+      },
+    }, scanSignal);
+    engineCoverage.push(linkSample.coverage);
+    const linkResult = linkSample.value ?? { checked: 0, broken: [], unknownCount: 0, statusByUrl: new Map(), findings: [] };
     // Whole-site mini-audit: deterministic checks on up to 4 same-origin subpages.
     const wholeSiteFindings: Finding[] = [];
     const linkedPages: NonNullable<ScanRecord["linkedPages"]> = [];
     let subpagesAudited = 0;
     {
       const priorityPattern = /pricing|about|contact|features|how|story|blog|docs|imprint|legal|security|faq/i;
-      const candidates = [...new Set(sameOriginLinks.map((href) => { try { const u = new URL(href, finalUrl); u.hash = ""; u.search = ""; return `${u.origin}${u.pathname}`; } catch { return ""; } }).filter((key) => key && new URL(key).pathname !== pageUrl.pathname && !/\.[a-z0-9]{2,5}$/i.test(new URL(key).pathname)))]
+      const candidates = [...new Set(sameOriginLinks.map((href) => { try { const u = new URL(href, finalUrl); if (!isLinkProbeCandidate(u)) return ""; u.hash = ""; return u.toString(); } catch { return ""; } }).filter((key) => key && new URL(key).pathname !== pageUrl.pathname && !/\.[a-z0-9]{2,5}$/i.test(new URL(key).pathname)))]
         .sort((a, b) => Number(priorityPattern.test(b)) - Number(priorityPattern.test(a)))
         .slice(0, 4);
       for (const candidate of candidates) {
@@ -513,10 +505,13 @@ async function processScanCore(id: string, leaseToken?: string) {
         const path = pageUrlObj.pathname;
         try {
           await assertRobotsAllows(pageUrlObj);
-          const res = await safeFetch(pageUrlObj.toString(), { timeoutMs: 6000, maxBytes: 600_000, maxRedirects: 2, beforeRedirect: assertRobotsAllows, budget: requestBudget });
+          const res = await safeFetch(pageUrlObj.toString(), { timeoutMs: 6000, maxBytes: 600_000, maxRedirects: 2, beforeRedirect: beforeLinkRedirect, budget: requestBudget });
           const pageAudit = inspectLinkedPage(path, res.status, String(res.headers["content-type"] ?? ""), res.body.toString("utf8"));
           linkedPages.push(pageAudit);
-          if (res.status >= 400) { wholeSiteFindings.push(auditFinding("technical", "technical", res.status >= 500 ? "high" : "medium", "A linked page returned an HTTP error", "Broken internal pages make the site look unfinished and can cost visitors mid-journey.", `${path} returned HTTP ${res.status}.`, "Fix the page or remove the link that points to it.")); continue; }
+          if (linkState(res.status) !== "reachable") {
+            linkedPages[linkedPages.length - 1] = { path, state: "unknown", status: res.status, note: `Page signals unavailable (HTTP ${res.status}).` };
+            continue;
+          }
           if (pageAudit.note) continue;
           subpagesAudited++;
           const { title = "", descriptionPresent = false, h1Count = 0, imageCount = 0, imagesMissingAlt = 0, noindex = false } = pageAudit;
@@ -579,24 +574,50 @@ async function processScanCore(id: string, leaseToken?: string) {
       try { const httpsTarget = new URL(finalUrl); httpsTarget.protocol = "https:"; await assertRobotsAllows(httpsTarget); const response = await safeFetch(httpsTarget.toString(), { statusOnly: true, timeoutMs: 3500, maxRedirects: 2, beforeRedirect: assertRobotsAllows }); certificateValid = response.finalUrl.startsWith("https:"); }
       catch (error) { const code = error instanceof Error ? (error as Error & { code?: string }).code : undefined; certificateValid = code && /CERT|TLS|SSL/i.test(code) ? false : undefined; }
     }
+    await phase(id, "Reviewing public security signals…", leaseToken);
     const security = securityFindings({ protocol: finalUrl.protocol, certificateValid, httpRedirectsToHttps, headers: initial.headers,
       mixedContent: finalUrl.protocol === "https:" ? snap.mixedContent : [], cookies, secrets: [], corsWildcards, exposureFindings: exposure.findings });
     const seo = seoFindings({ title: snap.title, description: snap.description, h1Count: snap.h1Count, headingOrderProblems: snap.headingOrderProblems,
-      canonical: snap.canonical, metaRobots: snap.metaRobots, robotsHeader: String(initial.headers["x-robots-tag"] ?? "").slice(0, 120), hreflang: snap.hreflang.map((item: { lang: string; href: string; valid: boolean }) => ({ ...item, status: linkResult.statusByUrl.get(item.href) })),
+      canonical: snap.canonical, metaRobots: snap.metaRobots, robotsHeader: String(initial.headers["x-robots-tag"] ?? "").slice(0, 120), hreflang: snap.hreflang.map((item: { lang: string; href: string; valid: boolean }) => ({ ...item, status: linkState(linkResult.statusByUrl.get(item.href)) === "missing" ? linkResult.statusByUrl.get(item.href) : undefined })),
       jsonLd: snap.jsonLd, imageCount: snap.imageCount, imageAltCount: snap.imageAltCount, ogTitle: snap.ogTitle, ogDescription: snap.ogDescription, ogImage: snap.ogImage, twitterCard: snap.twitterCard }, sitemap, []);
     const consoleMessages = [...(desktop.consoleMessages ?? []), ...(mobile.consoleMessages ?? [])];
     const leftovers = leftoverFindings({ text: `${snap.text} ${snap.html}`, title: snap.title, favicon: snap.favicon, imageUrls: snap.imageUrls,
       placeholderLinks: snap.placeholderLinks, testimonials: snap.testimonialBlocks, consoleErrors: scriptsExecuted ? desktop.consoleErrors + mobile.consoleErrors : 0, consoleMessages: scriptsExecuted ? consoleMessages : [],
       comingSoonCount: (snap.text.match(/coming soon/gi) ?? []).length });
-    const formAudit = formFindings({ forms: snap.forms, primaryCtas: snap.primaryCtas.filter((cta: { href: string }) => Boolean(cta.href)), statusByUrl: linkResult.statusByUrl, baseUrl: finalUrl.toString() });
+    const formAudit = formFindings({ forms: snap.forms, primaryCtas: [], statusByUrl: new Map(), baseUrl: finalUrl.toString() });
     const designSignals = auditDesignSignals([snap.visualSignals, mobileSnap.visualSignals]);
-    const findings = [...deterministicFindings({ page: snap, mobile: mobileSnap, links: linkResult, status: initial.status, protocol: finalUrl.protocol, ogImage, ogImageTooSmall }), ...security.findings, ...seo, ...leftovers, ...formAudit, ...wholeSiteFindings, ...designSignals.findings];
+    const basic = deterministicFindings({ page: snap, mobile: mobileSnap, links: { broken: [], checked: 0, unknownCount: 0 }, status: initial.status, protocol: finalUrl.protocol, ogImage, ogImageTooSmall });
+    const runObserved = async (engine: typeof seoEngine, input: Omit<Parameters<typeof engine.run>[0], "url" | "date">) => {
+      const result = await runEngine(engine, { ...input, url: finalUrl.toString(), date: observedAt }, scanSignal);
+      engineCoverage.push(result.coverage);
+      return result.value ?? [];
+    };
+    const functionality = functionalityEngine({
+      findings: [...basic.filter((item) => item.category === "technical" || item.category === "conversion"), ...formAudit],
+      url: finalUrl.toString(), date: observedAt, emptyRender: !snap.text && !snap.imageCount && !snap.ctas.length,
+      mobileCaptured: Boolean(mobile), incomplete: !scriptsExecuted, initializationErrors: desktop.consoleErrors,
+      failedAssets: [...desktop.failedAssets, ...mobile.failedAssets],
+      note: "Desktop and mobile rendering inspected. Form submission, checkout, login and account flows need manual verification.",
+    });
+    if (process.env.SCAN_NU_JAR && process.env.SCAN_NU_VERSION) await phase(id, "Checking delivered HTML structure…", leaseToken);
+    const markupResult = await markupPromise;
+    engineCoverage.push(markupResult.coverage);
+    const findings = combineFindings([
+      ...accessibilityFindings,
+      ...await runObserved(securityEngine, { findings: security.findings, checks: Object.values(security.checks), note: "Public transport, response headers and visible page signals only." }),
+      ...await runObserved(seoEngine, { findings: [...seo, ...wholeSiteFindings], checks: [robots, sitemap] }),
+      ...await runObserved(functionality.engine, functionality.input),
+      ...await runObserved(launchEngine, { findings: [...basic.filter((item) => item.category !== "technical" && item.category !== "conversion"), ...leftovers, ...designSignals.findings], manual: true }),
+      ...linkResult.findings, ...(markupResult.value ?? []),
+    ]);
+    const primaryResponses = primaryTargets.map((url) => linkState(linkResult.statusByUrl.get(url)));
+    const verifiedPrimary = primaryResponses.filter((status) => status === "reachable" || status === "missing").length;
     const checkResults: Record<string, MetricCheck> = {
       ...security.checks,
       status: { state: "checked", value: initial.status }, redirects: { state: "checked", value: initial.redirects.length }, https: { state: "checked", value: finalUrl.protocol === "https:" ? "Secure" : "Not secure" },
       title: snap.title ? { state: "checked", value: snap.title } : { state: "checked", value: "Missing" }, description: snap.description ? { state: "checked", value: snap.description } : { state: "checked", value: "Missing" },
       ogTitle: snap.ogTitle ? { state: "checked", value: snap.ogTitle } : unknown("No Open Graph title was declared."), ogDescription: snap.ogDescription ? { state: "checked", value: snap.ogDescription } : unknown("No Open Graph description was declared."), ogImage, favicon: snap.favicon ? { state: "checked", value: snap.favicon } : unknown("No favicon was declared."), appleTouchIcon: snap.appleTouchIcon ? { state: "checked", value: snap.appleTouchIcon } : unknown("No Apple touch icon was declared."), canonical: snap.canonical ? { state: "checked", value: snap.canonical } : unknown("No canonical URL was declared."), robots, sitemap,
-      imageAltCoverage: snap.imageCount ? { state: "checked", value: `${snap.imageAltCount}/${snap.imageCount}` } : unknown("No page images were detected."), sameOriginLinks: { state: "checked", value: `${linkResult.checked} checked · ${linkResult.broken.length} HTTP errors · ${linkResult.unknownCount} couldn't check` },
+      imageAltCoverage: snap.imageCount ? { state: "checked", value: `${snap.imageAltCount}/${snap.imageCount}` } : unknown("No page images were detected."), sameOriginLinks: linkSample.value && linkResult.checked > 0 ? { state: "checked", value: `${linkResult.checked} responses · ${linkResult.broken.length} missing · ${linkResult.unknownCount} unverified` } : unknown("No link destination responses could be verified."),
       proofSignals: { state: "checked", value: snap.hasProof ? "Detected" : "Not detected by text and image-label checks" }, pricing: { state: "checked", value: snap.hasPricing ? "Detected" : "Not detected in page text" }, faq: { state: "checked", value: snap.hasFaq ? "Detected" : "Not detected" }, contact: { state: "checked", value: snap.hasContact ? "Detected" : "Not detected" },
       mobileOverflow: { state: "checked", value: mobileSnap.bodyWidth > mobileSnap.viewportWidth + 2 ? `${mobileSnap.bodyWidth}px wide` : "None detected" },
       designFontFamilies: { state: "checked", value: designSignals.fontFamilies.length }, designDistinctColors: { state: "checked", value: designSignals.colors.length }, designContrastFailures: { state: "checked", value: designSignals.contrastFailureCount },
@@ -606,10 +627,10 @@ async function processScanCore(id: string, leaseToken?: string) {
       twitterCard: snap.twitterCard ? { state: "checked", value: snap.twitterCard } : { state: "checked", value: "Missing" }, hreflang: { state: "checked", value: snap.hreflang.length }, jsonLd: { state: "checked", value: `${snap.jsonLd.valid} valid · ${snap.jsonLd.invalid} invalid` },
       securityHeaders: { state: "checked", value: Object.values(security.checks).filter((item) => item.value === "Present").length }, exposedFiles: { state: "checked", value: exposure.exposed.length }, frontendSecrets: { state: "checked", value: secrets.length },
       mixedContent: { state: "checked", value: snap.mixedContent.length }, cookieIssues: { state: "checked", value: cookies.length }, corsWildcardRoutes: { state: "checked", value: corsWildcards.length },
-      formCount: { state: "checked", value: snap.forms.length }, primaryCtaTargets: { state: "checked", value: `${linkResult.checked} checked · ${linkResult.unknownCount} unknown` }, consoleErrors: scriptsExecuted ? { state: "checked", value: desktop.consoleErrors + mobile.consoleErrors } : unknown("Page scripts did not finish, so console errors could not be verified."),
+      formCount: { state: "checked", value: snap.forms.length }, primaryCtaTargets: verifiedPrimary ? { state: "checked", value: `${verifiedPrimary} verified · ${primaryTargets.length - verifiedPrimary} unverified` } : unknown("No primary destinations could be confirmed."), consoleErrors: scriptsExecuted ? { state: "checked", value: desktop.consoleErrors + mobile.consoleErrors } : unknown("Page scripts did not finish, so console errors could not be verified."),
       wholeSitePages: { state: "checked", value: `${subpagesAudited + 1} page${subpagesAudited ? "s" : ""} audited (entry + ${subpagesAudited} linked subpages)` },
       consoleErrorDetails: !scriptsExecuted ? unknown("Page scripts did not finish, so console errors could not be verified.") : (desktop.consoleMessages ?? []).length + (mobile.consoleMessages ?? []).length ? { state: "checked" as const, value: [...(desktop.consoleMessages ?? []), ...(mobile.consoleMessages ?? [])].join(" | ") } : { state: "checked" as const, value: "No console errors observed." },
-      brokenLinkDetails: linkResult.broken.length ? { state: "checked" as const, value: linkResult.broken.slice(0, 6).join(" | ") } : { state: "checked" as const, value: "No broken links among the checked set." },
+      brokenLinkDetails: linkResult.broken.length ? { state: "checked" as const, value: linkResult.broken.slice(0, 6).join(" | ") } : linkSample.coverage.status === "passed" ? { state: "checked", value: "No broken links among verified destinations." } : unknown("Not enough destination responses to rule out missing links."),
       redirectChain: { state: "checked", value: initial.redirects.length ? initial.redirects.join(" → ") : "No redirects" },
       assetWeights: { state: "checked", value: Object.entries(counter.buckets).map(([kind, bytes]) => `${kind} ${Math.round(bytes / 1024)} KB`).join(" · ") },
       largestAssets: { state: "checked", value: counter.largest.sort((a, b) => b.bytes - a.bytes).slice(0, 4).map((item) => `${item.url.split("/").pop()?.slice(0, 40) || item.url.slice(0, 40)} ${Math.round(item.bytes / 1024)} KB`).join(" · ") || "No subresources were fetched." },
@@ -623,6 +644,7 @@ async function processScanCore(id: string, leaseToken?: string) {
       speedResources: scriptsExecuted ? { state: "checked", value: `${desktop.speed?.resources ?? 0} requests · ${desktop.speed?.scripts ?? 0} scripts · ${desktop.speed?.thirdPartyOrigins ?? 0} third-party origins · ${desktop.speed?.transferKB ?? 0} KB transfer` } : unknown("Page scripts did not finish, so this browser timing could not be verified."),
     };
     const current = await readScan(id); if (!current) return;
+    scanSignal?.throwIfAborted();
     await phase(id, "Preparing the evidence-led report…", leaseToken);
     await phase(id, "Reviewing visual design…", leaseToken);
     const reviewModel = current.paid ? (process.env.LLM_MODEL_PAID || "gpt-4.1") : (process.env.LLM_MODEL_FREE || process.env.LLM_MODEL || undefined);
@@ -644,7 +666,11 @@ async function processScanCore(id: string, leaseToken?: string) {
     const sectionCodes: Record<string, string> = { security: "SEC", seo: "SEO", leftovers: "LEFT", forms: "FORM", technical: "TECH", design: "DES", other: "GEN" };
     const codeCounters: Record<string, number> = {};
     for (const finding of ranked) { const prefix = sectionCodes[finding.section ?? "other"] ?? "GEN"; codeCounters[prefix] = (codeCounters[prefix] ?? 0) + 1; finding.code = `${prefix}-${String(codeCounters[prefix]).padStart(2, "0")}`; }
-    const [psi, psiDesktop] = await lighthousePromise;
+    await phase(id, "Finishing Lighthouse performance checks…", leaseToken);
+    const performanceResult = await lighthousePromise;
+    scanSignal?.throwIfAborted();
+    engineCoverage.push(performanceResult.coverage);
+    const [psi, psiDesktop] = performanceResult.value ?? [missingPsiStrategy("Lighthouse did not finish."), missingPsiStrategy("Lighthouse did not finish.")];
     Object.assign(checkResults, {
       pageSpeedMobile: psi.performance, pageSpeedDesktop: psiDesktop.performance,
       lighthouseMobileAccessibility: psi.accessibility, lighthouseDesktopAccessibility: psiDesktop.accessibility,
@@ -653,19 +679,21 @@ async function processScanCore(id: string, leaseToken?: string) {
       lcpMobile: psi.lcp, clsMobile: psi.cls, inpTbtMobile: psi.inpTbt,
       lcpDesktop: psiDesktop.lcp, clsDesktop: psiDesktop.cls, inpTbtDesktop: psiDesktop.inpTbt,
     });
-    const scored = scoreLighthouseAudit({ findings: ranked, checks: checkResults, mobile: psi, desktop: psiDesktop, designReview });
+    const skipAccessibilityScore = hasAutomatedAccessibility(engineCoverage);
+    const scored = scoreLighthouseAudit({ findings: ranked, checks: checkResults, mobile: psi, desktop: psiDesktop, designReview, skipAccessibilityScore });
     const hints = stackHints(html);
-    const prompts = promptVariants({ url: finalUrl.toString(), title: snap.title, stack: hints, findings: ranked, copyDrafts });
+    const prompts = promptVariants({ url: finalUrl.toString(), title: snap.title, stack: hints, findings: ranked, copyDrafts, scannedAt: observedAt, scoringVersion: 5 });
     const paidPayload = { available: copyDrafts.headlines.length === 3, paidModelReady: Boolean(current.paid && copyDrafts.headlines.length === 3), findings: ranked, prompts, copyDrafts, model: scanModel };
     await saveScan({ ...current, status: "complete", phase: "Report ready", updatedAt: now(), score: scored.score, categoryScores: scored.categoryScores, findings: ranked, auditCounts: calculateAuditCounts(checkResults, ranked), scoreBreakdown: scored.scoreBreakdown,
-      checks: checkResults, categoryCoverage: scored.categoryCoverage, aiCrawlerReport, lighthouse: { mobile: psi, desktop: psiDesktop, source: "via Google PageSpeed Insights" }, sharePreview: { title: snap.ogTitle || snap.title, description: snap.ogDescription || snap.description }, shareImageUrl,
-      desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 4, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
+      checks: checkResults, engines: engineCoverage, categoryCoverage: scored.categoryCoverage, aiCrawlerReport, lighthouse: { mobile: psi, desktop: psiDesktop, source: "via Google PageSpeed Insights" }, sharePreview: { title: snap.ogTitle || snap.title, description: snap.ogDescription || snap.description }, shareImageUrl,
+      desktopImage: desktop.screenshot, mobileImage: mobile.screenshot, designReview, scoringVersion: 5, domain: pageUrl.hostname, title: snap.title, description: snap.description, finalUrl: finalUrl.toString(), redirects: initial.redirects,
       stackHints: hints, contentReview: contentReview.status, linkedPages, paidPayload }, leaseToken);
     await settleScanCost({ scanId: id, paid: Boolean(current.paid), browserMs, inputTokens: modelInputTokens, outputTokens: modelOutputTokens, model: scanModel });
     for (const script of scripts) script.source = "";
     snap.html = "";
     html = "";
   } catch (error) {
+    if (shutdown?.aborted && leaseToken) return; // The queue retries after the abandoned lease expires.
     const message = scanFailureMessage(error);
     if (!(error instanceof UnsafeTargetError) && !(error instanceof SafeFetchError)) {
       const diagnostic = error instanceof Error ? error as Error & { code?: string } : undefined;
@@ -674,7 +702,15 @@ async function processScanCore(id: string, leaseToken?: string) {
     await failScanAndReleasePaidRescan(id, (scan) => ({ ...scan, status: "failed", phase: "Scan could not be completed", error: message, updatedAt: now() }), leaseToken);
     const failedScan = await readScan(id);
     await settleScanCost({ scanId: id, paid: Boolean(failedScan?.paid), browserMs, inputTokens: modelInputTokens, outputTokens: modelOutputTokens, model: scanModel || (failedScan?.paid ? process.env.LLM_MODEL_PAID : process.env.LLM_MODEL_FREE) || "gpt-4.1-mini" }).catch(() => undefined);
-  } finally { lighthouseController?.abort(); running.delete(id); }
+  } finally {
+    lighthouseController?.abort();
+    running.delete(id);
+    console.info("Scan engine timings", {
+      wallMs: Math.round(workerClock.now() - startedAt), browserMs,
+      workerRssBytes: process.memoryUsage.rss(), workerRssBeforeBytes: startedRss, workerMaxRssKiB: process.resourceUsage().maxRSS,
+      engines: engineCoverage.map(({ id, version, status, durationMs }) => ({ id, version, status, durationMs })),
+    });
+  }
 }
 
 export class ScanAdmissionError extends Error {
@@ -701,9 +737,10 @@ export async function createScan(url: string, options: { paid?: boolean; paidRes
   return record;
 }
 
-export async function processScan(id: string, leaseToken?: string) {
+export async function processScan(id: string, leaseToken?: string, shutdown?: AbortSignal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SCAN_WALL_LIMIT_MS);
-  try { return await withScanSignal(controller.signal, () => withRequestBudget(new ScanRequestBudget(), () => processScanCore(id, leaseToken))); }
+  const signal = shutdown ? AbortSignal.any([shutdown, controller.signal]) : controller.signal;
+  try { return await withScanSignal(signal, () => withRequestBudget(new ScanRequestBudget(), () => processScanCore(id, leaseToken, shutdown))); }
   finally { clearTimeout(timer); }
 }

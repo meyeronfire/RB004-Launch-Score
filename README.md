@@ -30,7 +30,9 @@ Apply [`db/migrations/001_initial.sql`](db/migrations/001_initial.sql), [`db/mig
 
 Run the web process with `NODE_ENV=production npm start`, and run one or more workers with `NODE_ENV=production npm run worker`. Production workers require Linux, Playwright Chromium, `unshare`, and permission to create user and network namespaces. Validate that `unshare --user --map-root-user --net -- true` succeeds in the worker container before routing traffic to it. The Chromium process starts inside a network namespace with no external network; Playwright communicates over its local driver pipe while the Node worker performs DNS-pinned, bounded fetches. Disable browser host networking and keep the worker's host firewall restricted to required PostgreSQL, email, Stripe-independent app, and public page access. Do not run the production worker in a serverless function or a container where namespace isolation is unavailable: it refuses to start.
 
-The worker has a hard 90-second scan deadline, per-request deadlines, byte and concurrency budgets, DNS validation with pinned addresses, safe redirect checks, robots checks, and private-address rejection. This protects the scanner's requests; deployment networking should also deny private and metadata ranges as a second boundary.
+See [scanner engines and worker rollout](docs/SCANNER_ENGINES.md) for coverage, feature flags, operational limits, and the container setup.
+
+The worker has a hard 105-second scan deadline, per-request deadlines, byte and concurrency budgets, DNS validation with pinned addresses, safe redirect checks, robots checks, and private-address rejection. This protects the scanner's requests; deployment networking should also deny private and metadata ranges as a second boundary.
 
 For self-hosted production, set `TRUSTED_PROXY_IP_HEADER` only to a header overwritten by your trusted ingress. Vercel uses its platform-assigned client IP header. Production requests do not trust arbitrary forwarded headers. Set a random `RATE_LIMIT_SALT` and keep it stable across app instances.
 
@@ -49,7 +51,7 @@ If an email provider is temporarily unavailable after payment, the encrypted out
 
 The app stores scan URL, rendered snapshots, findings, scores, scan progress, submitted lead email, purchase receipt identifiers, hashed purchaser tokens, and encrypted pending email tokens. Public report APIs expose only the free projection. Optional model and PageSpeed results may be unavailable. Technical signals such as proof, pricing, FAQ, and contact use transparent heuristics; they are evidence for review, not a guarantee of conversion. PageSpeed is an external estimate.
 
-The scanner respects robots.txt for the page and fetched resources. When robots rules cannot be confirmed, it stops the scan. It checks up to 50 same-origin links, caps browser requests and downloaded bytes, blocks WebSockets/service workers, and does not load user-provided Open Graph images into the app server or share card.
+The scanner respects robots.txt for the page and fetched resources. When robots rules cannot be confirmed, it stops the scan. It samples up to twelve linked destinations, caps browser requests and downloaded bytes, blocks WebSockets/service workers, and does not load user-provided Open Graph images into the app server or share card.
 
 ## Legal and billing
 

@@ -19,8 +19,16 @@ export async function browserLaunchOptions() {
   if (configured !== wrapper) throw new Error("Production scanning requires the bundled network-isolation browser wrapper.");
   const realBrowser = chromium.executablePath();
   await access(realBrowser); await access(wrapper);
-  process.env.RB004_CHROMIUM_REAL_EXECUTABLE = realBrowser;
-  return { headless: true, executablePath: wrapper, args: browserArgs };
+  const env = {
+    PATH: "/usr/bin:/bin",
+    HOME: process.env.HOME || "/tmp",
+    LANG: "C.UTF-8",
+    TMPDIR: "/tmp",
+    XDG_CACHE_HOME: "/tmp",
+    XDG_CONFIG_HOME: "/tmp",
+    RB004_CHROMIUM_REAL_EXECUTABLE: realBrowser,
+  };
+  return { headless: true, executablePath: wrapper, args: browserArgs, env, chromiumSandbox: process.env.SCAN_CHROMIUM_SANDBOX === "1" };
 }
 
 export function verifyWorkerNetworkIsolation() {

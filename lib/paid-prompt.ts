@@ -15,7 +15,7 @@ export async function enhancePaidPrompt(scanId: string) {
   const pageText = [scan.title, scan.description, ...findings.map((item) => item.evidence)].filter(Boolean).join("\n");
   const review = await reviewContent({ title: scan.title ?? "", description: scan.description ?? "", pageText, findings, desktopImage: scan.desktopImage ?? "", mobileImage: scan.mobileImage ?? "" }, model);
   if (!review.usage || review.copyDrafts.headlines.length !== 3) return false;
-  const prompts = promptVariants({ url: scan.finalUrl ?? scan.url, title: scan.title ?? "", stack: scan.stackHints ?? [], findings, copyDrafts: review.copyDrafts });
+  const prompts = promptVariants({ url: scan.finalUrl ?? scan.url, title: scan.title ?? "", stack: scan.stackHints ?? [], findings, copyDrafts: review.copyDrafts, scannedAt: scan.createdAt, scoringVersion: scan.scoringVersion });
   const paidPromptUsage = { inputTokens: review.usage.inputTokens, outputTokens: review.usage.outputTokens };
   const updated = await updateScan(scanId, (current) => ({ ...current, paidPayload: { available: true, paidModelReady: true, findings: current.paidPayload?.findings ?? findings, ...current.paidPayload, copyDrafts: review.copyDrafts, prompts, model, paidPromptUsage }, updatedAt: new Date().toISOString() }), scan.leaseToken);
   if (!updated) return false;
