@@ -7,6 +7,11 @@ services:
       - .env.worker
     init: true
     read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:${SCAN_WORKER_SECCOMP_PROFILE:?Set the path to the verified scanner seccomp profile}
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=512m
     shm_size: 256m

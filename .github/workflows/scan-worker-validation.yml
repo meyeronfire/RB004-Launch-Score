@@ -1,0 +1,86 @@
+name: Scanner worker validation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/scan-worker-validation.yml"
+      - "Dockerfile.worker"
+      - ".dockerignore"
+      - "scripts/**"
+      - "lib/**"
+      - "config/**"
+      - "db/migrations/**"
+      - "package*.json"
+
+permissions:
+  contents: read
+
+jobs:
+  worker:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build the worker image
+        run: docker build --file Dockerfile.worker --tag r4r-worker:ci .
+      - name: Start an isolated database
+        run: |
+          set -euo pipefail
+          docker network create --internal r4r-worker-ci
+          docker run --detach --name r4r-db --network r4r-worker-ci \
+            -e POSTGRES_USER=fixture -e POSTGRES_PASSWORD=fixture-only \
+            -e POSTGRES_DB=scanner_staging postgres:17-bookworm
+          for attempt in $(seq 1 30); do
+            if docker exec r4r-db pg_isready -h localhost -U fixture -d scanner_staging; then break; fi
+            sleep 1
+          done
+          for migration in db/migrations/*.sql; do
+            docker exec -i r4r-db psql -v ON_ERROR_STOP=1 -U fixture -d scanner_staging < "$migration"
+          done
+      - name: Run the production worker entrypoint
+        run: |
+          set -euo pipefail
+          profile="$RUNNER_TEMP/r4r-worker-seccomp.json"
+          curl --fail --silent --show-error --location --max-time 30 \
+            https://raw.githubusercontent.com/microsoft/playwright/v1.64.1/utils/docker/seccomp_profile.json \
+            -o "$profile"
+          echo "cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849  $profile" | sha256sum --check
+          docker run --detach --name r4r-worker --network r4r-worker-ci --init --read-only \
+            --tmpfs /tmp:rw,nosuid,nodev,size=512m --shm-size 256m \
+            --memory 2g --cpus 2 --pids-limit 256 --cap-drop ALL \
+            --security-opt no-new-privileges=true --security-opt "seccomp=$profile" \
+            -e DATABASE_URL=postgres://fixture:fixture-only@r4r-db:5432/scanner_staging \
+            -e SCAN_WORKER_ID=linux-validation r4r-worker:ci
+          for attempt in $(seq 1 60); do
+            health="$(docker inspect --format '{{.State.Health.Status}}' r4r-worker)"
+            if [ "$health" = healthy ]; then break; fi
+            test "$(docker inspect --format '{{.State.Running}}' r4r-worker)" = true
+            sleep 1
+          done
+          test "$health" = healthy
+          test "$(docker exec r4r-worker id -u)" != 0
+          docker exec r4r-worker node --import tsx -e 'console.log("tsx", require("tsx/package.json").version)'
+          docker exec r4r-worker sh -c 'test ! -d node_modules/vitest && java -jar "$SCAN_NU_JAR" --version'
+          docker logs r4r-worker | grep -F 'chromiumSandbox: true'
+          psql_ci() { docker exec r4r-db psql -X -At -v ON_ERROR_STOP=1 -U fixture -d scanner_staging "$@"; }
+          test "$(psql_ci -c "select count(*) from worker_heartbeats where worker_id = 'linux-validation'")" = 1
+
+          # A reserved, non-delegated hostname exercises the real queue in failure mode.
+          job=10526aca-dd6e-4ac5-9a75-80541cffed44
+          psql_ci -c "insert into scans (id,url,status,phase,created_at,updated_at,payload)
+            values ('$job','https://worker-fixture.invalid/','queued','Queued',now(),now(),
+            jsonb_build_object('id','$job','url','https://worker-fixture.invalid/','status','queued',
+              'phase','Queued','createdAt',now(),'updatedAt',now()))"
+          for attempt in $(seq 1 40); do
+            status="$(psql_ci -c "select status from scans where id = '$job'")"
+            if [ "$status" = failed ]; then break; fi
+            sleep 1
+          done
+          test "$status" = failed
+          psql_ci -c "select status, phase from scans where id = '$job'"
+          docker exec r4r-worker cat /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/memory.peak
+          docker stop -t 30 r4r-worker
+          test "$(docker inspect --format '{{.State.ExitCode}}' r4r-worker)" = 0
+      - name: Print worker logs
+        if: always()
+        run: docker logs r4r-worker 2>&1 || true

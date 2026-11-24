@@ -1,13 +1,10 @@
 import { writeFile } from "node:fs/promises";
-import { claimNextScan, workerHeartbeat } from "../lib/store";
+import { claimNextScan, database, workerHeartbeat } from "../lib/store";
 import { processScan } from "../lib/scanner";
-import { verifyWorkerNetworkIsolation } from "../lib/browser-isolation";
+import { verifyWorkerBrowser } from "../lib/browser-isolation";
 import { deliverClaimEmail } from "../lib/payments";
 import { processPaidPromptJob } from "../lib/paid-prompt";
 
-if (!process.env.DATABASE_URL) throw new Error("Set DATABASE_URL before starting the production scan worker.");
-verifyWorkerNetworkIsolation();
-process.env.PLAYWRIGHT_EXECUTABLE_PATH = `${process.cwd()}/scripts/chromium-netns`;
 const workerId = process.env.SCAN_WORKER_ID || `worker-${process.pid}`;
 const shutdown = new AbortController();
 const stop = () => shutdown.abort();
@@ -22,6 +19,14 @@ async function heartbeat() {
 }
 
 async function main() {
+  const preflightOnly = process.argv.includes("--preflight");
+  if (!preflightOnly && !process.env.DATABASE_URL) throw new Error("Set DATABASE_URL before starting the production scan worker.");
+  process.env.PLAYWRIGHT_EXECUTABLE_PATH = `${process.cwd()}/scripts/chromium-netns`;
+  await verifyWorkerBrowser();
+  console.info("Scanner worker browser preflight passed", {
+    uid: process.getuid?.(), chromiumSandbox: process.env.SCAN_CHROMIUM_SANDBOX === "1",
+  });
+  if (preflightOnly) return;
   while (!shutdown.signal.aborted) {
     try {
       await heartbeat();
@@ -38,6 +43,9 @@ async function main() {
       await wait(2500);
     }
   }
-  process.exitCode = 0;
+  await database()?.end({ timeout: 5 });
 }
-void main();
+void main().catch((error: unknown) => {
+  console.error("Scanner worker startup failed:", error instanceof Error ? error.message : "Unknown error");
+  process.exitCode = 1;
+});

@@ -4,8 +4,12 @@ if [ "$(uname -s)" != "Linux" ]; then
   echo "RB004 production Chromium requires Linux network isolation." >&2
   exit 70
 fi
+if [ "${1:-}" = "--check-namespace" ]; then
+  exec unshare --user --map-current-user --net -- readlink /proc/self/ns/net
+fi
 if [ -z "${RB004_CHROMIUM_REAL_EXECUTABLE:-}" ] || [ ! -x "$RB004_CHROMIUM_REAL_EXECUTABLE" ]; then
   echo "RB004 Chromium executable is not configured." >&2
   exit 70
 fi
-exec unshare --user --map-root-user --net -- "$RB004_CHROMIUM_REAL_EXECUTABLE" "$@"
+# Chromium's sandbox requires a non-zero effective UID inside the namespace.
+exec unshare --user --map-current-user --net -- "$RB004_CHROMIUM_REAL_EXECUTABLE" "$@"
