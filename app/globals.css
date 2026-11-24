@@ -1345,11 +1345,27 @@ button, input { font: inherit; }
 .report-page .paid-copy-options,.report-page .paid-agent-prompts { margin-top:46px; }
 .report-page .paid-copy-options .report-section-title h2,.report-page .paid-agent-prompts .report-section-title h2 { font-size:clamp(24px,3vw,34px); }
 .report-page .finding-filter-status { margin:-8px 0 14px; color:#aaa; font:11px var(--mono); }
-.report-page .report-unlock-offer { margin-block:20px 8px; border-top:2px solid #ff2e7e; border-bottom:1px solid #303030; background:linear-gradient(100deg,rgba(255,46,126,.09),transparent 54%); }
+.report-page .report-unlock-offer { grid-template-columns:minmax(0,1fr) minmax(250px,380px); margin-block:20px 8px; padding-block:clamp(24px,3vw,36px); border-top:2px solid #ff2e7e; border-bottom:1px solid #303030; background:linear-gradient(100deg,rgba(255,46,126,.09),transparent 54%); }
+.report-page .report-unlock-label { max-width:100%; text-wrap:pretty; }
+.report-page .report-plan-unavailable { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:24px; margin-block:20px 8px; padding:24px 28px; border:1px solid #574d36; border-left:3px solid #f1c66e; border-radius:6px; background:linear-gradient(100deg,rgba(241,198,110,.075),rgba(17,17,17,.92) 56%); }
+.report-page .report-plan-unavailable > div:first-child > .mono { color:#f1c66e; font-size:11px; letter-spacing:.04em; }
+.report-page .report-plan-unavailable h2 { margin:7px 0 5px; color:#f4f0e7; font-size:clamp(20px,2.2vw,26px); }
+.report-page .report-plan-unavailable p { max-width:72ch; margin:0; color:#c7c3ba; font-size:14px; line-height:1.55; }
+.report-page .report-plan-unavailable-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+.report-page .report-plan-unavailable-actions a { display:inline-flex; min-height:44px; align-items:center; justify-content:center; padding:0 14px; border:1px solid #48433a; border-radius:5px; color:#eee8d9; font-size:13px; text-decoration:none; white-space:nowrap; }
+.report-page .report-plan-unavailable-actions a:first-child { border-color:#f1c66e; color:#111; background:#f1c66e; font-weight:650; }
+.report-page .report-plan-unavailable-actions a:hover { border-color:#fff; color:#fff; }
+.report-page .report-plan-unavailable-actions a:first-child:hover { color:#111; background:#f8d990; }
+.report-page .report-plan-loading { display:flex; align-items:center; gap:16px; margin-block:20px 8px; padding:16px 20px; border:1px solid rgba(255,46,126,.35); border-left:3px solid #ff2e7e; border-radius:6px; background:rgba(255,46,126,.055); }
+.report-page .report-plan-loading .mono { flex:none; color:#ff83b1; font-size:11px; letter-spacing:.04em; }
+.report-page .report-plan-loading p { margin:0; color:#ddd; font-size:14px; }
 @media (max-width:720px) {
   .report-page .report-jump-nav { margin-inline:-18px; width:calc(100% + 36px); padding-inline:18px; }
   .report-page .report-jump-nav a { padding-inline:12px; }
   .report-page .category-open-label { justify-self:stretch; }
   .report-page .paid-report-access-label { align-self:flex-start; }
-  .report-page .report-unlock-offer { padding:20px 0; }
+  .report-page .report-unlock-offer { grid-template-columns:minmax(0,1fr); gap:18px; padding-block:20px; }
+  .report-page .report-plan-unavailable { grid-template-columns:minmax(0,1fr); gap:16px; padding:20px; }
+  .report-page .report-plan-unavailable-actions { justify-content:flex-start; }
+  .report-page .report-plan-loading { align-items:flex-start; flex-direction:column; gap:7px; padding:16px; }
 }

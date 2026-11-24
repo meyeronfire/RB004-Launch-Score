@@ -52,7 +52,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   const [checkoutPending, setCheckoutPending] = useState(false); const [checkoutMessage, setCheckoutMessage] = useState(""); const [checkoutSection, setCheckoutSection] = useState("");
   const [accessStatus, setAccessStatus] = useState("");
   const [animatedScore, setAnimatedScore] = useState<number | null>(null);
-  const checkoutAvailable = Boolean(scan.checkoutAvailable && !scan.paidRescanAvailable);
+  const checkoutAvailable = Boolean(scan.checkoutAvailable && !scan.paidRescanAvailable && !scan.founderPreview);
   useEffect(() => {
     if (scan.id === "example" || ["queued", "scanning"].includes(scan.status)) return;
     let cancelled = false;
@@ -200,9 +200,9 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   const unscoredCategories = categoryOrder.filter((key) => typeof scan.categoryScores?.[key] !== "number");
   const completedPhases = (scan.phaseHistory ?? []).filter((phase) => phase !== scan.phase);
   const paidReportSection = paidData ? <PaidReportSection scan={scan} paidData={paidData} /> : null;
-  const paidReportOffer = scan.id !== "example" && !paidData ? <section className="wrap report-unlock-offer" id="unlock" aria-label="Unlock the launch plan and full report">
+  const paidReportOffer = scan.id !== "example" && !paidData && scan.paidAvailable && !scan.paidRescanAvailable && !scan.founderPreview ? <section className="wrap report-unlock-offer" id="unlock" aria-label="Unlock the launch plan and full report">
     <div>
-      <p className="mono report-unlock-label">PERSONALIZED LAUNCH PLAN + CODING-AGENT PROMPTS · ${PRICE_FIX_PROMPT_USD} · ONE-TIME</p>
+      <p className="mono report-unlock-label">PERSONALIZED LAUNCH PLAN + CODING PROMPTS · ${PRICE_FIX_PROMPT_USD} · ONE‑TIME</p>
       <p>Get a prioritized launch checklist, page-copy drafts, one focused coding-agent prompt per finding, and a complete prompt that brings the fixes together.</p>
       <p className="mono report-unlock-note">ONE URL · TWO FRESH RE-SCANS IN SEVEN DAYS · NO SUBSCRIPTION · CURSOR, CLAUDE CODE, CODEX &amp; MORE</p>
     </div>
@@ -216,6 +216,11 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
             : "The personalized plan and prompts could not be prepared for this scan because the AI review was incomplete. Checkout is unavailable for this report, and no payment was taken. You can still email yourself the free report below."}</p>}
       {checkoutMessage && checkoutSection === "report" && <p className="inline-status" role="status">{checkoutMessage}</p>}
     </div>
+  </section> : null;
+  const paidReportLoading = scan.id !== "example" && !paidData && (scan.paidRescanAvailable || scan.founderPreview) ? <section className="wrap report-plan-loading" id="unlock" aria-live="polite"><span className="mono">{scan.founderPreview ? "FOUNDER PREVIEW · NO PAYMENT" : "PURCHASED REPORT"}</span><p>Your personalized plan is loading and is included. No payment is needed.</p></section> : null;
+  const paidReportUnavailable = scan.id !== "example" && !paidData && !scan.paidAvailable && !scan.paidRescanAvailable && !scan.founderPreview ? <section className="wrap report-plan-unavailable" id="unlock" aria-labelledby="report-plan-unavailable-title">
+    <div><span className="mono">PERSONALIZED LAUNCH PLAN</span><h2 id="report-plan-unavailable-title">Not available for this scan.</h2><p>The free audit is ready, but we couldn’t prepare its personalized plan. Checkout is unavailable and nothing was charged. Your findings are still available above.</p></div>
+    <div className="report-plan-unavailable-actions"><a href="#email-report">Email the free report</a><Link href={`/?url=${encodeURIComponent(scan.url)}`}>Try another scan</Link></div>
   </section> : null;
 
   return <main className="report-page">
@@ -271,7 +276,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
         <p className="finding-filter-status" aria-live="polite">Showing {visibleRecommendations.length} of {recommendationFindings.length} findings</p>
         <div className="finding-list top-recommendation-list">{visibleRecommendations.map((item) => <ReportFinding key={item.id} finding={item as React.ComponentProps<typeof ReportFinding>["finding"]} index={recommendationFindings.findIndex((finding) => finding.id === item.id)} scoringVersion={scan.scoringVersion} evidenceAvailable={Boolean(captureLink(item))} evidenceHref={captureLink(item)}/>)}</div>
       </section>}
-      {paidReportOffer}
+      {paidReportOffer ?? paidReportLoading ?? paidReportUnavailable}
       {paidReportSection}
       <section className="wrap capture-section" id="page-evidence" aria-label="Rendered page previews">
         <div className="report-section-title"><h2>Page evidence.</h2><span className="mono">CAPTURED RENDERS · NOT PROOF OF INVISIBLE BEHAVIOR</span></div>
