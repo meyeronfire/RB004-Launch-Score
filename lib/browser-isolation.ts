@@ -57,13 +57,19 @@ export async function verifyWorkerBrowser() {
     });
     const { port } = server.address() as AddressInfo;
     const page = await browser.newPage();
-    try { await page.goto(`http://127.0.0.1:${port}/`, { timeout: 2000 }); }
-    catch { /* The browser has no route to the worker's loopback namespace. */ }
-    if (requests) throw new Error("Chromium reached worker loopback.");
     await page.setContent("<main>Worker browser preflight</main>", { timeout: 2000 });
     if (await page.locator("main").textContent({ timeout: 2000 }) !== "Worker browser preflight") {
       throw new Error("Chromium could not render the preflight document.");
     }
+    const probe = await browser.newPage();
+    try {
+      await probe.goto(`http://127.0.0.1:${port}/`, { timeout: 2000 });
+    } catch {
+      // A failed navigation can replace the document with a Chromium error page.
+    } finally {
+      await probe.close();
+    }
+    if (requests) throw new Error("Chromium reached worker loopback.");
   } finally {
     server.closeAllConnections();
     await Promise.all([browser.close(), new Promise<void>((resolve) => server.close(() => resolve()))]);
