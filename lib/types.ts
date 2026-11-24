@@ -57,6 +57,7 @@ export type ScanRecord = {
   domain?: string; title?: string; description?: string; finalUrl?: string; redirects?: string[];
   stackHints?: string[]; contentReview?: string; leadEmail?: string; paid?: boolean; paidRescanExpiresAt?: string;
   paidRescanTokenHash?: string; paidRescanSessionId?: string; paidRescanUseReleased?: boolean;
+  founderPreview?: boolean;
   paidPayload?: PaidPayload;
 };
 export type PaidPayload = { available: boolean; paidModelReady?: boolean; findings: Finding[]; prompts: Record<string, string>; model?: string; paidPromptUsage?: { inputTokens: number; outputTokens: number }; copyDrafts: { status: string; headlines: string[]; subheadline: string; cta: string; faq: string; metaTitle: string; metaDescription: string } };

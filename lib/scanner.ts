@@ -699,7 +699,14 @@ async function processScanCore(id: string, leaseToken?: string, shutdown?: Abort
       const diagnostic = error instanceof Error ? error as Error & { code?: string } : undefined;
       console.error("Launch Score scan failed", { scanId: id, errorName: diagnostic?.name ?? "UnknownError", errorCode: diagnostic?.code });
     }
-    await failScanAndReleasePaidRescan(id, (scan) => ({ ...scan, status: "failed", phase: "Scan could not be completed", error: message, updatedAt: now() }), leaseToken);
+    const failed = await failScanAndReleasePaidRescan(id, (scan) => ({ ...scan, status: "failed", phase: "Scan could not be completed", error: message, updatedAt: now() }), leaseToken);
+    // A terminally failed free scan did not deliver a report, so return its
+    // reserved free-scan entitlement. Leave interrupted jobs reserved: their
+    // lease can expire and the queue will retry them.
+    if (failed?.status === "failed" && !failed.paid) {
+      try { await releaseFreeScanReservation(id); }
+      catch { console.error("A failed free scan could not release its reservation.", { scanId: id }); }
+    }
     const failedScan = await readScan(id);
     await settleScanCost({ scanId: id, paid: Boolean(failedScan?.paid), browserMs, inputTokens: modelInputTokens, outputTokens: modelOutputTokens, model: scanModel || (failedScan?.paid ? process.env.LLM_MODEL_PAID : process.env.LLM_MODEL_FREE) || "gpt-4.1-mini" }).catch(() => undefined);
   } finally {

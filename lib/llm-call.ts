@@ -1,13 +1,13 @@
 // Shared LLM JSON call supporting OpenAI-compatible chat endpoints and the
 // native Google Gemini generateContent API (required for inline base64 images).
 // Retries transient 429/5xx responses and walks a fallback model list.
-export async function llmJsonCall(input: { baseUrl: string; apiKey: string; model: string; system: string; userText: string; images?: string[]; temperature: number; timeoutMs: number; signal?: AbortSignal; fallbackModels?: string[] }): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+export async function llmJsonCall(input: { baseUrl: string; apiKey: string; model: string; system: string; userText: string; images?: string[]; temperature: number; timeoutMs: number; signal?: AbortSignal; fallbackModels?: string[] }): Promise<{ text: string; inputTokens: number; outputTokens: number; model: string }> {
   const models = [input.model, ...(input.fallbackModels ?? [])];
   let lastError: unknown;
   for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        return await llmJsonAttempt({ ...input, model });
+        return { ...await llmJsonAttempt({ ...input, model }), model };
       } catch (error) {
         lastError = error;
         const status = /HTTP (\d{3})/.exec(String(error))?.[1];

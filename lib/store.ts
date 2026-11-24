@@ -161,6 +161,7 @@ export function publicScan(scan: ScanRecord) {
   const publicScoreBreakdown = safe.scoreBreakdown ? { ...safe.scoreBreakdown, top: [] } : undefined;
   return { ...safe,
     paidAvailable: Boolean(scan.paidPayload?.available),
+    founderPreview: Boolean(scan.founderPreview && scan.paidPayload?.available),
     paidReportPending: Boolean(scan.paid && (!scan.paidPayload?.available || !scan.paidPayload.paidModelReady)),
     paidRescanAvailable: false,
     checkoutAvailable: Boolean(scan.paidPayload?.available && checkoutConfigured),
