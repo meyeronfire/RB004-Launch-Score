@@ -28,4 +28,14 @@ describe("Lighthouse score categories", () => {
     expect(lowSeo.scoreBreakdown.categories.seo_aeo.base).toBe(0);
     expect(highSeo.categoryCoverage.seo_aeo).toBe(1);
   });
+  it("keeps the Lighthouse accessibility score out of Technical when axe coverage is available", () => {
+    const base = { findings: [], checks: checks(100, 100), desktop: strategy(100) };
+    const mobile = strategy(100);
+    const fallback = scoreLighthouseAudit({ ...base, mobile: { ...mobile, accessibility: metric(0) } });
+    const normal = scoreLighthouseAudit({ ...base, mobile });
+    expect(fallback.categoryScores.technical).toBeLessThan(normal.categoryScores.technical);
+    const axeLow = scoreLighthouseAudit({ ...base, mobile: { ...mobile, accessibility: metric(0) }, skipAccessibilityScore: true });
+    const axeHigh = scoreLighthouseAudit({ ...base, mobile, skipAccessibilityScore: true });
+    expect(axeLow).toEqual(axeHigh);
+  });
 });

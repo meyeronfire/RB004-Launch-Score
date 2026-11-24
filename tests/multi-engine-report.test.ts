@@ -79,10 +79,21 @@ it("saves a real rendered base report with optional engines disabled or enabled"
   expect(upgraded.findings?.some((finding) => finding.title === "A page script resource returned not found")).toBe(true);
   expect(upgraded.engines).toHaveLength(8);
   expect(upgraded.engines?.find(({ id }) => id === "performance")?.status).toBe("unavailable");
+  expect(base.engines?.find(({ id }) => id === "accessibility")?.status).toBe("unavailable");
+  expect(upgraded.phaseHistory).toEqual(expect.arrayContaining(["Rendering the mobile page…", "Testing accessibility…", "Checking links and page signals…"]));
+  expect(base.phaseHistory).not.toContain("Testing accessibility…");
+  expect(upgraded.paidPayload?.prompts.Codex).toContain("button-name");
   expect(upgraded.scoringVersion).toBe(5);
+  expect(upgraded.scoreBreakdown?.categories.conversion.lost)
+    .toBe((base.scoreBreakdown?.categories.conversion.lost ?? 0) + 13);
+  expect(upgraded.scoreBreakdown?.categories.technical.lost).toBe(base.scoreBreakdown?.categories.technical.lost);
   expect(new Set(upgraded.findings?.flatMap(({ fingerprint }) => fingerprint ? [fingerprint] : [])).size)
     .toBe(upgraded.findings?.filter(({ fingerprint }) => fingerprint).length);
   if (testsHaveNu) expect(upgraded.findings?.some((finding) => finding.sources?.some(({ ruleId }) => ruleId === "duplicate-id"))).toBe(true);
   expect(info).toHaveBeenCalledTimes(2);
-  if (process.env.SCAN_FIXTURE_METRICS === "1") process.stdout.write(JSON.stringify(info.mock.calls.map(([, metrics]) => metrics)) + "\n");
+  if (process.env.SCAN_FIXTURE_METRICS === "1") {
+    process.stdout.write(JSON.stringify({ baseScore: base.score, upgradedScore: upgraded.score,
+      baseTechnical: base.scoreBreakdown?.categories.technical, upgradedTechnical: upgraded.scoreBreakdown?.categories.technical,
+      runs: info.mock.calls.map(([, metrics]) => metrics) }) + "\n");
+  }
 }, 30_000);

@@ -6,6 +6,7 @@ import { lighthouseLabMetrics } from "../lib/scan-engines/lighthouse";
 import { linkIntegrity } from "../lib/scan-engines/link-integrity";
 import { markup, markupFindings } from "../lib/scan-engines/markup";
 import { makeFinding } from "../lib/score";
+import { scoreLighthouseAudit } from "../lib/lighthouse-scoring";
 
 const url = "https://app.example/";
 const date = "2026-11-24T09:00:00Z";
@@ -32,9 +33,13 @@ describe("versioned scan engines", () => {
   it("retains combined evidence and one stable issue through version or query changes", () => {
     const issue = makeFinding({ category: "technical", severity: "high", title: "Missing language", evidence: "No language", why_it_matters: "Readers need the language", fix: "Set lang" });
     const first = recordFinding(issue, url + "?first=1", { engine: "accessibility", version: "4.14.1", ruleId: "html-has-lang" }, date, "document-language");
-    const second = recordFinding(issue, url + "#another", { engine: "functionality", version: "1", ruleId: "lang" }, date, "document-language");
+    const second = recordFinding({ ...issue, id: "built-in-language-check" }, url + "#another", { engine: "functionality", version: "1", ruleId: "lang" }, date, "document-language");
     expect(first.fingerprint).toBe(second.fingerprint);
-    expect(combineFindings([first, second])).toEqual([{ ...first, sources: [...first.sources!, ...second.sources!] }]);
+    const merged = combineFindings([first, second]);
+    expect(merged).toEqual([{ ...first, sources: [...first.sources!, ...second.sources!] }]);
+    const suite = lighthouseLabMetrics(undefined, "mobile");
+    const score = scoreLighthouseAudit({ findings: merged, checks: {}, mobile: suite, desktop: suite });
+    expect(score.scoreBreakdown.categories.technical).toMatchObject({ count: 1, lost: 13 });
   });
 
   it("isolates faults and time limits", async () => {

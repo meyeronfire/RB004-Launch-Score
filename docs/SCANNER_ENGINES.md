@@ -21,12 +21,29 @@ Public findings include the check source. Rich element evidence is used only in 
 ## Rollout
 
 1. Validate the Vercel Preview for the scanner branch. The preview reports existing records and can accept jobs only if its database and a live worker are configured. Use a separate staging database and test-mode payment configuration to exercise the queue end to end.
-2. Verify the Linux worker can run `unshare --user --map-root-user --net -- true` and launch sandboxed Chromium under the intended non-root account. The container still depends on kernel, LSM and seccomp support for these namespaces. Keep existing worker protections and configure the host's approved security profile if necessary. If a container host cannot provide those controls, run the worker as the existing isolated Linux service.
-3. Build and start with `docker compose -f compose.worker.yaml up -d --build` where Docker is available. Set the existing database and worker-only integration variables in an untracked `.env.worker`. The example compose configuration limits one worker to 2 CPUs, 2 GiB of memory and 256 processes. It publishes no ports. Restrict access to private networks and cloud metadata from the worker's outbound network, permitting only the specific infrastructure dependencies it needs.
+2. Verify the Linux worker can run `unshare --user --map-current-user --net -- true` and launch sandboxed Chromium under the intended non-root account. The container still depends on kernel, LSM and seccomp support for these namespaces. Keep existing worker protections and configure the host's approved security profile if necessary. If a container host cannot provide those controls, run the worker as the existing isolated Linux service.
+3. Generate and supply the version-checked seccomp profile below, then build and start with `docker compose -f compose.worker.yaml up -d --build`. Set the existing database and worker-only integration variables in an untracked `.env.worker`. The example compose configuration limits one worker to 2 CPUs, 2 GiB of memory and 256 processes. It publishes no ports. Restrict access to private networks and cloud metadata from the worker's outbound network, permitting only the specific infrastructure dependencies it needs.
 4. Review the local and database heartbeats, then run a clean staging scan and inspect all eight engines in the report. Stop or replace one worker at a time. In-flight optional engines respect a deadline, and a worker interrupted by shutdown leaves its job for the existing lease-based recovery. Failed optional checks do not make a successful base report fail.
 5. Compare the same staging fixtures with flags off and on. Monitor elapsed time, peak worker/container memory, partial rates and findings that need manual review before enabling the flags on customer jobs.
 
 Run `npm test` after `npx playwright install chromium`. To include the real Nu fixture, set `SCAN_NU_JAR` and `SCAN_NU_VERSION` and supply Java 17 or later (optional `SCAN_JAVA_BIN`). Preview and test execution do not need customer data or a live Stripe payment.
+
+### Linux staging preflight
+
+Generate the profile from the repository root and point Compose to the resulting absolute path.
+
+```sh
+curl --fail --silent --show-error --location \
+  https://raw.githubusercontent.com/microsoft/playwright/v1.64.1/utils/docker/seccomp_profile.json \
+  -o /tmp/r4r-playwright-seccomp.json
+node scripts/prepare-worker-seccomp.mjs /tmp/r4r-playwright-seccomp.json /tmp/r4r-worker-seccomp.json
+export SCAN_WORKER_SECCOMP_PROFILE=/tmp/r4r-worker-seccomp.json
+docker compose -f compose.worker.yaml run --rm scanner node --import tsx scripts/worker.ts --preflight
+```
+
+The generated profile retains the Playwright defaults and permits Chromium's sandbox chroot syscall. Linux still checks the capability in the calling namespace, and the worker container drops its outer capabilities. The worker launches Chromium before writing its first readiness heartbeat. The preflight verifies that Chromium can render and cannot reach a temporary HTTP listener on the worker's loopback. A failed preflight prevents the worker from claiming jobs.
+
+Use a dedicated staging database and Stripe sandbox account for the release check. Confirm that the configured $12 price belongs to test mode before opening Checkout. Complete a sandbox Checkout, confirm the signed webhook and report claim, and check that the paid prompt opens only after the claim. Use the same approved target URLs and uncached jobs for baseline and candidate workers. Record both report score breakdowns and review the changed findings. Capture worker logs, the container's CPU time and peak memory, and scan attempts and outcomes. A failure-path run against a reserved hostname verifies queue error handling but does not measure the cost or reliability of successful scans.
 
 ## Capacity and cost
 
