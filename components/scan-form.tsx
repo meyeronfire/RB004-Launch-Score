@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { track } from "@/lib/analytics-client";
+import { landingPathEventProps, readScanAttribution, track } from "@/lib/analytics-client";
 
 export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { initialUrl?: string; submitLabel?: string }) {
   const [pending, setPending] = useState(false);
@@ -70,11 +70,12 @@ export function ScanForm({ initialUrl = "", submitLabel = "Get my score" }: { in
         throw new Error(result.error ?? "This page could not be scanned.");
       }
       if (typeof result.remaining === "number") setRemaining(result.remaining);
-      track("scan_started");
+      const params = new URLSearchParams(window.location.search);
+      const attribution = readScanAttribution({ path: window.location.pathname, source: params.get("utm_source"), medium: params.get("utm_medium"), campaign: params.get("utm_campaign") });
+      track("scan_started", landingPathEventProps(attribution));
       try {
         sessionStorage.setItem(`rb004-pending-scan:${result.id}`, "1");
-        const params = new URLSearchParams(window.location.search);
-        sessionStorage.setItem(`rb004-attribution:${result.id}`, JSON.stringify({ path: window.location.pathname, source: params.get("utm_source"), medium: params.get("utm_medium"), campaign: params.get("utm_campaign") }));
+        if (attribution) sessionStorage.setItem(`rb004-attribution:${result.id}`, JSON.stringify(attribution));
       } catch { /* Analytics are optional. */ }
       router.push(`/r/${encodeURIComponent(result.id)}`);
     } catch (err) {

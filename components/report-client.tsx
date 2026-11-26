@@ -3,10 +3,10 @@
 import { lighthouseChecks } from "@/lib/lighthouse-fields";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { RELEASE_CODE, PRICE_FIX_PROMPT_USD, PRODUCT_NAME } from "@/config/release";
-import { track } from "@/lib/analytics-client";
+import { landingPathEventProps, track, trackClarity } from "@/lib/analytics-client";
 import type { Finding } from "@/lib/types";
 import { TechnicalReportSections, ReportSharePreview } from "@/components/technical-report-sections";
 import { GlassCard } from "@/components/glass-card";
@@ -44,6 +44,8 @@ function examplePaidData() {
 export function ReportClient({ initial }: { initial: FreeReport }) {
   const params = useParams<{ id: string }>(); const searchParams = useSearchParams();
   const id = params.id;
+  const purchaseEventSessions = useRef(new Set<string>());
+  const checkoutSessionId = searchParams.get("checkout_session_id");
   const paidPreview = id === "example" && searchParams.get("paidPreview") === "1";
   const [scan, setScan] = useState(initial as FreeReport & { findings?: Finding[]; lockedTitles?: string[]; lockedCount?: number; paidRescansRemaining?: number | null });
   const [paidData, setPaidData] = useState<{ available: boolean; findings: Finding[]; prompts: Record<string, string>; copyDrafts: { status: string; headlines: string[]; subheadline: string; cta: string; faq: string; metaTitle: string; metaDescription: string } } | undefined>(() => paidPreview ? examplePaidData() : undefined);
@@ -53,6 +55,32 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
   const [accessStatus, setAccessStatus] = useState("");
   const [animatedScore, setAnimatedScore] = useState<number | null>(null);
   const checkoutAvailable = Boolean(scan.checkoutAvailable && !scan.paidRescanAvailable && !scan.founderPreview);
+  useEffect(() => {
+    if (searchParams.get("checkout") !== "complete" || !checkoutSessionId || scan.id === "example") return;
+    const eventKey = `rb004-purchase-confirmed:${checkoutSessionId}`;
+    try { if (sessionStorage.getItem(eventKey)) return; } catch { /* Continue with in-memory deduplication. */ }
+    if (purchaseEventSessions.current.has(checkoutSessionId)) return;
+    purchaseEventSessions.current.add(checkoutSessionId);
+
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("checkout_session_id");
+    window.history.replaceState(window.history.state, "", cleanUrl);
+
+    void fetch("/api/checkout/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scanId: id, sessionId: checkoutSessionId }),
+      cache: "no-store",
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const result = await response.json() as { confirmed?: boolean };
+      if (!result.confirmed) return;
+      let attribution: unknown;
+      try { attribution = JSON.parse(sessionStorage.getItem(`rb004-attribution:${id}`) ?? "null"); } catch { attribution = undefined; }
+      trackClarity("purchased", landingPathEventProps(attribution));
+      try { sessionStorage.setItem(eventKey, "1"); } catch { /* Clarity event is already sent. */ }
+    }).catch(() => undefined);
+  }, [checkoutSessionId, id, scan.id, searchParams]);
   useEffect(() => {
     if (scan.id === "example" || ["queued", "scanning"].includes(scan.status)) return;
     let cancelled = false;
@@ -104,7 +132,9 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
       const key = `rb004-pending-scan:${id}`;
       if (sessionStorage.getItem(key)) {
         sessionStorage.removeItem(key);
-        track("scan_done", { score: scan.score });
+        let attribution: unknown;
+        try { attribution = JSON.parse(sessionStorage.getItem(`rb004-attribution:${id}`) ?? "null"); } catch { attribution = undefined; }
+        track("scan_done", { score: scan.score, ...(landingPathEventProps(attribution) ?? {}) });
       }
     } catch { /* Optional analytics must not affect report access. */ }
   }, [completed, id, scan.score]);
@@ -140,7 +170,7 @@ export function ReportClient({ initial }: { initial: FreeReport }) {
       try { attribution = JSON.parse(sessionStorage.getItem(`rb004-attribution:${id}`) ?? "null"); } catch { attribution = undefined; }
       const response = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scanId: id, attribution }) });
       const result = await response.json(); if (!response.ok || !result.url) throw new Error(result.error ?? "Checkout could not be started.");
-      track("checkout_started");
+      track("checkout_started", landingPathEventProps(attribution));
       window.location.href = result.url;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Checkout could not be started.";

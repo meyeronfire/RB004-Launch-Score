@@ -42,8 +42,8 @@ export default async function Home({ searchParams }: PageProps<"/">) {
       </header>
       <section className="wrap hero" aria-labelledby="hero-title">
         <div className="hero-content">
-          <h1 id="hero-title">Is Your AI-Built App Ready for <em>Real Users?</em></h1>
-          <p className="hero-sub">Find what to fix before your users do.</p>
+          <h1 id="hero-title">Is Your App or Website Ready for <em>Real Users?</em></h1>
+          <p className="hero-sub">Find what to fix before launch—whether you built it with AI or code.</p>
           <ScanForm initialUrl={rescanUrl} />
           <p className="microcopy">FREE · ABOUT 60 SECONDS · NO SIGNUP</p>
         </div>
@@ -86,6 +86,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         <div className="faq-intro"><h2 id="faq-title">A Few Useful Answers.</h2><p>Clear expectations make better reviews.</p></div>
         <div className="faq-list">
           <details className="faq-item" open><summary>Why not just ask ChatGPT?</summary><p>{PRODUCT_NAME} renders the live page, measures what it can, and checks the experience on desktop and mobile. The paid launch plan turns scan evidence into ordered fixes and a complete agent prompt.</p></details>
+          <details className="faq-item"><summary>Does it only work for AI-built apps?</summary><p>No. Scan any publicly accessible app or website before launch, whether it was built with an AI tool, a development team, or a mix of both. The review is based on what visitors and browsers can observe; private code and infrastructure still need owner checks.</p></details>
           <details className="faq-item"><summary>What does the score mean?</summary><p>It combines clarity, conversion, design, trust, technical, security, and SEO/AEO signals. Every score is based on findings we could verify; unavailable checks stay unknown.</p></details>
           <details className="faq-item"><summary>Do I need an account?</summary><p>You get one free scan without an account. An email link can unlock up to two more free scans. The personalized launch plan and full agent brief are a separate one-time purchase for the URL you scanned.</p></details>
           <details className="faq-item"><summary>Can every page be checked?</summary><p>The page must be publicly accessible. Private, sign-in protected, or blocked pages cannot be scanned.</p></details>
@@ -94,7 +95,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         </div>
       </div>
     </section>
-    <section className="wrap editorial" aria-labelledby="resources-title"><div className="section-head"><h2 id="resources-title">Prepare before you launch.</h2><p>Use the checklist for owner tasks and learn what a public scan can verify.</p></div><div className="launch-journey-grid"><article><span className="mono">FREE RESOURCE</span><h3>Launch checklists</h3><p>Practical steps for security, SEO, SaaS operations, and AI-built apps.</p><Link href="/checklists">Open checklist →</Link></article><article><span className="mono">METHODOLOGY</span><h3>Understand your scan</h3><p>See how findings are collected and where public scan limits apply.</p><Link href="/methodology">Read methodology →</Link></article><article><span className="mono">FIELD GUIDES</span><h3>Build for real users</h3><p>Independent advice for popular AI app builders and launch workflows.</p><Link href="/guides">Browse guides →</Link></article></div></section>
+    <section className="wrap editorial" aria-labelledby="resources-title"><div className="section-head"><h2 id="resources-title">Prepare before you launch.</h2><p>Choose a guide for your next milestone, then use the scan to check the public experience.</p></div><div className="launch-journey-grid"><article><span className="mono">FOR SAAS FOUNDERS</span><h3>Get ready for first users</h3><p>Work through onboarding, account boundaries, billing, support, and recovery before opening your SaaS to customers.</p><Link href="/saas-launch-checklist">Open the SaaS launch checklist →</Link></article><article><span className="mono">FOR WEBSITE OWNERS</span><h3>Review your website before launch</h3><p>Check the first impression, mobile experience, accessibility, trust signals, and the basics that help people find your site.</p><Link href="/website-launch-checklist">Open the website launch checklist →</Link></article><article><span className="mono">METHODOLOGY</span><h3>Understand your scan</h3><p>See what the report can verify from a public URL and which checks need an owner.</p><Link href="/methodology">Read the scan methodology →</Link></article><article><span className="mono">FIELD GUIDES</span><h3>Build for real users</h3><p>Practical guidance for founders launching AI-built apps, SaaS products, and websites.</p><Link href="/guides">Browse all launch guides →</Link></article></div></section>
     <SiteFooter navLabel="Regular Basis releases"><a href="https://www.getklare.com/">RB001</a><a href="https://epkay.com/">RB002</a><a href="https://urtype.app/">RB003</a><Link href="/terms">TERMS</Link><Link href="/privacy">PRIVACY</Link><Link href="/refund">REFUNDS</Link><Link href="/tools">TOOLS</Link><a href="https://regularbasis.studio">REGULAR BASIS</a></SiteFooter>
   </main>;
 }
