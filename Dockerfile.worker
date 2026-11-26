@@ -1,0 +1,39 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund \
+    && ./node_modules/.bin/playwright install --with-deps chromium \
+    && apt-get update \
+    && apt-get install --no-install-recommends -y openjdk-17-jre-headless util-linux ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Package versions and this archive digest are pinned independently of the web app.
+RUN mkdir /opt/nu \
+    && cd /opt/nu \
+    && npm pack vnu-jar@26.11.20 --silent \
+    && node -e 'const fs=require("node:fs"); const hash=require("node:crypto").createHash("sha512").update(fs.readFileSync("vnu-jar-26.11.20.tgz")).digest("base64"); if(hash!=="sI9L9VFiYEWl6YuFNDRQQHM8PjI3+T900tJTEXwjqsmMtfCqtbDI9mo+SC0RF4DTOJFrpEC0Vd5rYZgi/9Os4g==") process.exit(1)' \
+    && tar -xzf vnu-jar-26.11.20.tgz \
+    && rm vnu-jar-26.11.20.tgz \
+    && find /opt/nu/package -name vnu.jar -exec cp {} /opt/nu/vnu.jar \; \
+    && java -jar /opt/nu/vnu.jar --version
+
+COPY lib lib
+COPY config config
+COPY scripts scripts
+COPY tsconfig.json tsconfig.json
+
+ENV NODE_ENV=production \
+    SCAN_CHROMIUM_SANDBOX=1 \
+    SCAN_AXE_ENABLED=1 \
+    SCAN_LIGHTHOUSE_MOBILE_ONLY=1 \
+    SCAN_NU_JAR=/opt/nu/vnu.jar \
+    SCAN_NU_VERSION=26.11.20 \
+    SCAN_WORKER_HEALTH_FILE=/tmp/r4r-worker-health
+
+USER node
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["node", "-e", "const f=require('node:fs'); const p=process.env.SCAN_WORKER_HEALTH_FILE; process.exit(Date.now()-f.statSync(p).mtimeMs>30000?1:0)"]
+CMD ["node", "--import", "tsx", "scripts/worker.ts"]

@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   turbopack: { root: process.cwd() },
   outputFileTracingRoot: path.resolve(process.cwd()),
   outputFileTracingIncludes: { "/r/**": ["./public/fonts/*.ttf"] },
-  serverExternalPackages: ["playwright", "postgres"],
+  serverExternalPackages: ["playwright", "postgres", "axe-core"],
   async headers() {
     return [{ source: "/(.*)", headers: [
       { key: "X-Content-Type-Options", value: "nosniff" },

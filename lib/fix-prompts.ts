@@ -6,6 +6,15 @@ export type CopyDrafts = PaidPayload["copyDrafts"];
 
 const uncertain = (finding: Finding) => findingResult(finding) === "Needs review";
 const categoryName = (finding: Finding) => finding.category.replaceAll("_", " ");
+function provenance(finding: Finding) {
+  return finding.sources?.map((source) => {
+    const elements = source.elements?.map((element) => [element.detail, element.selector, element.snippet].filter(Boolean).join(" · ")) ?? [];
+    return [`- Engine rule: ${source.engine} ${source.version} / ${source.ruleId}`,
+      ...(source.measured !== undefined ? [`  Observed: ${source.measured}; expected: ${source.expected ?? "not recorded"}`] : []),
+      ...elements.map((element) => `  Affected element: ${element}`)].join("\n");
+  }).join("\n") ?? "";
+}
+
 function acceptance(finding: Finding) {
   const title = finding.title.toLowerCase();
   if (/\bforms?\b|\bsubmit|\bsubmission/.test(title)) return "A safe submission test reaches the intended result, displays useful success and error feedback, and remains keyboard accessible.";
@@ -28,7 +37,7 @@ export function findingFixPrompt(input: { url: string; title: string; finding: F
 
 ## Page and finding
 - Page: ${input.title || "Title not recorded"}
-- URL: ${input.url}
+- URL: ${finding.affectedUrl ?? input.url}
 - Check: ${finding.code || finding.id}
 - Category: ${categoryName(finding)}
 - Severity: ${finding.severity}
@@ -36,6 +45,7 @@ export function findingFixPrompt(input: { url: string; title: string; finding: F
 
 ## What the scan recorded
 - Observation: ${finding.evidence}
+${provenance(finding)}
 - Why it matters: ${finding.why_it_matters}
 - Recommended direction: ${finding.fix}
 
@@ -63,7 +73,7 @@ export function promptVariants(input: { url: string; title: string; stack: strin
   const fixes = confirmed.length ? confirmed.map((item, index) => [
     `### ${index + 1}. ${item.title}`,
     `**ISSUE**\n${item.title} — ${item.severity} priority; ${categoryName(item)}${item.code ? `; rule ${item.code}` : ""}. ${item.why_it_matters}`,
-    `**EVIDENCE**\nAffected URL: ${input.url}\nReady for Real observed: ${item.evidence}`,
+    `**EVIDENCE**\nAffected URL: ${item.affectedUrl ?? input.url}\nReady for Real observed: ${item.evidence}\n${provenance(item)}`,
     `**TASK**\n${item.fix}`,
     `**ACCEPTANCE CRITERIA**\n${acceptance(item)} Confirm the recorded condition is resolved on the affected URL.`,
   ].join("\n\n")).join("\n\n") : "No confirmed issues were included in the purchased report. Do not make speculative changes.";
@@ -78,10 +88,11 @@ export function promptVariants(input: { url: string; title: string; stack: strin
     "Claude Code": "Work in the existing repository. Inspect its instructions and current implementation before editing; then apply and verify this brief in place.",
     Lovable: "Inspect the current project and its existing components first. Make targeted changes in place and preview the affected page at mobile and desktop sizes.",
     Bolt: "Inspect the current project, framework, and existing components first. Make targeted changes in place and verify the affected behavior and responsive page.",
+    Replit: "Locate the app route and relevant files in the current Replit project. Verify the change in a test deployment before publishing.",
     v0: "Inspect the current project and existing route before editing. Update the existing implementation in place; do not generate a replacement project or unrelated redesign.",
     Codex: "Inspect the current repository, project instructions, and relevant files before editing. Make the smallest targeted changes, run relevant checks, inspect the final diff, and report verified outcomes.",
   };
-  return Object.fromEntries(Object.entries(toolInstructions).map(([tool, instruction]) => [tool, `${shared}\n\n## Instructions for ${tool}\n${instruction}`])) as Record<"Cursor" | "Claude Code" | "Lovable" | "Bolt" | "v0" | "Codex", string>;
+  return Object.fromEntries(Object.entries(toolInstructions).map(([tool, instruction]) => [tool, `${shared}\n\n## Instructions for ${tool}\n${instruction}`])) as Record<"Cursor" | "Claude Code" | "Lovable" | "Bolt" | "v0" | "Codex" | "Replit", string>;
 }
 
 export function emptyDrafts(): CopyDrafts {

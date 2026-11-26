@@ -9,6 +9,7 @@ type Input = {
   mobile: LighthouseStrategy;
   desktop: LighthouseStrategy;
   designReview?: DesignReview;
+  skipAccessibilityScore?: boolean;
 };
 
 function checkedScores(metrics: MetricCheck[]) {
@@ -18,8 +19,8 @@ function checkedScores(metrics: MetricCheck[]) {
 export function scoreLighthouseAudit(input: Input) {
   const findings = dedupeFindings(input.findings);
   const technicalScores = checkedScores([
-    input.mobile.performance, input.mobile.accessibility, input.mobile.bestPractices,
-    input.desktop.performance, input.desktop.accessibility, input.desktop.bestPractices,
+    input.mobile.performance, input.mobile.bestPractices, input.desktop.performance, input.desktop.bestPractices,
+    ...(input.skipAccessibilityScore ? [] : [input.mobile.accessibility, input.desktop.accessibility]),
   ]);
   const seoScores = checkedScores([input.mobile.seo, input.desktop.seo]);
   const categoryCoverage = getCategoryCoverage(input.checks, findings);

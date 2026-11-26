@@ -11,27 +11,27 @@ const organizationJsonLd = {
   "@type": "Organization",
   name: PRODUCT_NAME,
   url: SITE_URL,
-  description: "Launch readiness reviews for publicly accessible AI-built apps and websites.",
+  description: "Evidence-led launch readiness reviews for publicly accessible apps and websites, whether AI-built or traditionally developed.",
   brand: { "@type": "Brand", name: "Regular Basis" },
 };
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: `${PRODUCT_NAME} — Launch Readiness Check for AI-Built Apps`,
-  description: "Run a free launch readiness check for your AI-built app. Get an evidence-based review of your landing page, conversion, accessibility, security, and technical setup.",
+  title: `${PRODUCT_NAME} — Launch Readiness Check for Apps & Websites`,
+  description: "Run a free launch readiness check for your app or website. Get an evidence-based review of its messaging, usability, trust, accessibility, security, and technical setup before real users arrive.",
   alternates: { canonical: "/" },
   robots: { index: true, follow: true },
   openGraph: {
-    title: `${PRODUCT_NAME} — Launch Readiness Check for AI-Built Apps`,
-    description: "A free, evidence-based launch readiness check for AI-built apps.",
+    title: `${PRODUCT_NAME} — Launch Readiness Check for Apps & Websites`,
+    description: "A free, evidence-based launch readiness check for founder-built apps and websites, whether AI-built or traditionally developed.",
     siteName: PRODUCT_NAME,
     type: "website",
     url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
-    title: `${PRODUCT_NAME} — Launch Readiness Check for AI-Built Apps`,
-    description: "A free, evidence-based launch readiness check for AI-built apps.",
+    title: `${PRODUCT_NAME} — Launch Readiness Check for Apps & Websites`,
+    description: "A free, evidence-based launch readiness check for apps and websites before real users arrive.",
   },
 };
 

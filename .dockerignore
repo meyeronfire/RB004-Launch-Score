@@ -1,0 +1,11 @@
+**
+!package.json
+!package-lock.json
+!tsconfig.json
+!lib
+!lib/**
+!scripts
+!scripts/**
+!config
+!config/**
+!Dockerfile.worker

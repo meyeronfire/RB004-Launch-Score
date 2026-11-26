@@ -81,7 +81,7 @@ export async function makeCheckout(scanId: string, attribution?: { path: string;
       mode: "payment", payment_method_types: ["card"], client_reference_id: scanId, customer_creation: "always", expires_at: expiresAt,
       line_items: [{ quantity: 1, price: priceId }],
       metadata: { scanId, priceId, releaseCode: RELEASE_CODE, oneTime: "true", checkoutAttemptId: attemptId, ...(attribution ? { sourcePath: attribution.path, ...(attribution.source ? { utmSource: attribution.source } : {}), ...(attribution.medium ? { utmMedium: attribution.medium } : {}), ...(attribution.campaign ? { utmCampaign: attribution.campaign } : {}) } : {}) },
-      success_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=complete`, cancel_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=cancelled`,
+      success_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=complete&checkout_session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${site}/r/${encodeURIComponent(scanId)}?checkout=cancelled`,
   }, { idempotencyKey: attemptId });
   await sql.begin(async (tx) => {
     await tx`UPDATE checkout_sessions SET stripe_session_id=${session.id} WHERE stripe_session_id=${attemptId}`;
