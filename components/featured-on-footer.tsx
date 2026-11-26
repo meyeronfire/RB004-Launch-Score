@@ -6,7 +6,8 @@
  * Dark artwork is the official dark variant for this black footer. href, alt,
  * and rel stay as documented. SeeWhatNewAI keeps rel="nofollow noopener".
  * Twelve Tools, DeepLaunch, and LLM Relevance have no official rel; the link
- * adds rel="noopener" only, because target is _blank. Do not add nofollow.
+ * adds rel="noopener" only, because target is _blank. ShowMeBestAI's supplied
+ * snippet intentionally has no rel attribute. Do not add nofollow to followed links.
  */
 const BADGES: {
   href: string;
@@ -14,7 +15,7 @@ const BADGES: {
   alt: string;
   width: number;
   height: number;
-  rel?: string;
+  rel?: string | null;
   ariaLabel?: string;
 }[] = [
   {
@@ -55,6 +56,14 @@ const BADGES: {
     height: 66,
     rel: "noopener",
   },
+  {
+    href: "https://showmebest.ai",
+    src: "https://showmebest.ai/badge/feature-badge-white.webp",
+    alt: "Featured on ShowMeBestAI",
+    width: 220,
+    height: 60,
+    rel: null,
+  },
 ];
 
 export function FeaturedOnFooter() {
@@ -64,7 +73,7 @@ export function FeaturedOnFooter() {
       <ul className="featured-on-list">
         {BADGES.map((badge) => (
           <li key={badge.href}>
-            <a href={badge.href} target="_blank" rel={badge.rel ?? "noopener"} aria-label={badge.ariaLabel}>
+            <a href={badge.href} target="_blank" rel={badge.rel === null ? undefined : badge.rel ?? "noopener"} aria-label={badge.ariaLabel}>
               {/* Official badge URLs must stay in the HTML for directory crawlers. next/image would rewrite src. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={badge.src} alt={badge.alt} width={badge.width} height={badge.height} />
